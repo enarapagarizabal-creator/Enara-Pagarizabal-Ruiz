@@ -120,3 +120,184 @@ export class LiveAudioPlayer {
     return this.isPlaying;
   }
 }
+
+/**
+ * Global persistent reference to prevent Chrome garbage collector from
+ * killing speech synthesis utterances prematurely.
+ */
+let globalActiveUtterance: SpeechSynthesisUtterance | null = null;
+let speechWatchdogTimer: any = null;
+
+export function stopBrowserSpeech() {
+  if (speechWatchdogTimer) {
+    clearInterval(speechWatchdogTimer);
+    speechWatchdogTimer = null;
+  }
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    try {
+      window.speechSynthesis.cancel();
+    } catch {
+      // ignore
+    }
+  }
+  globalActiveUtterance = null;
+  if (typeof window !== 'undefined') {
+    (window as any).__umaActiveUtterance = null;
+  }
+}
+
+/**
+ * Resilient, multi-browser Speech Synthesis engine for Uma.
+ * Handles:
+ * - Garbage collection bugs in Chrome
+ * - Asynchronous voice loading in WebKit/Blink
+ * - Background pause bugs with automatic resume heartbeat
+ * - Natural pitch, speed, and language detection (Spanish vs English)
+ */
+export function speakBrowserText(
+  text: string,
+  onStart?: () => void,
+  onEnd?: () => void
+): () => void {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    onEnd?.();
+    return () => {};
+  }
+
+  // Clear any existing speech and timers
+  stopBrowserSpeech();
+
+  // Clean formatted text for natural pronunciation (remove asterisks, markdown, etc.)
+  const cleanText = text
+    .replace(/[*_#`~[\]]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleanText) {
+    onEnd?.();
+    return () => {};
+  }
+
+  const isSpanish =
+    /[áéíóúñ¿¡]/i.test(cleanText) ||
+    /\b(hola|buenos|buenas|enara|estudia|estudios|idiomas|universidad|deusto|marketing|español|bilbao|curso|grado|prácticas|experiencia|ecuestre|caballos|contacto|residencia|delegada|resumen)\b/i.test(
+      cleanText
+    );
+
+  const utterance = new SpeechSynthesisUtterance(cleanText);
+  globalActiveUtterance = utterance;
+  (window as any).__umaActiveUtterance = utterance;
+
+  utterance.lang = isSpanish ? 'es-ES' : 'en-US';
+  utterance.pitch = 1.05;
+  utterance.rate = 0.98;
+
+  let hasEnded = false;
+  const finish = () => {
+    if (hasEnded) return;
+    hasEnded = true;
+    if (speechWatchdogTimer) {
+      clearInterval(speechWatchdogTimer);
+      speechWatchdogTimer = null;
+    }
+    if (globalActiveUtterance === utterance) {
+      globalActiveUtterance = null;
+    }
+    onEnd?.();
+  };
+
+  utterance.onstart = () => {
+    try {
+      window.speechSynthesis.resume();
+    } catch {}
+    onStart?.();
+
+    // Chrome bug: SpeechSynthesis can pause unexpectedly on long sentences;
+    // watchdog heartbeat keeps it resumed until finished.
+    if (speechWatchdogTimer) clearInterval(speechWatchdogTimer);
+    speechWatchdogTimer = setInterval(() => {
+      if (!window.speechSynthesis.speaking) {
+        clearInterval(speechWatchdogTimer);
+        speechWatchdogTimer = null;
+      } else if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+    }, 1500);
+  };
+
+  utterance.onend = finish;
+  utterance.onerror = (e) => {
+    console.warn('SpeechSynthesis event note:', e);
+    finish();
+  };
+
+  const selectVoiceAndSpeak = () => {
+    const voices = window.speechSynthesis.getVoices();
+    if (voices && voices.length > 0) {
+      if (isSpanish) {
+        const esVoice =
+          voices.find(
+            (v) =>
+              v.lang.startsWith('es') &&
+              (v.name.includes('Monica') ||
+                v.name.includes('Paulina') ||
+                v.name.includes('Google') ||
+                v.name.includes('Lucia') ||
+                v.name.includes('Natural') ||
+                v.name.includes('Helena') ||
+                v.name.includes('Laura'))
+          ) || voices.find((v) => v.lang.startsWith('es'));
+        if (esVoice) utterance.voice = esVoice;
+      } else {
+        const enVoice =
+          voices.find(
+            (v) =>
+              v.lang.startsWith('en') &&
+              (v.name.includes('Samantha') ||
+                v.name.includes('Victoria') ||
+                v.name.includes('Female') ||
+                v.name.includes('Google') ||
+                v.name.includes('Natural') ||
+                v.name.includes('Jenny') ||
+                v.name.includes('Ava') ||
+                v.name.includes('Karen') ||
+                v.name.includes('Serena'))
+          ) || voices.find((v) => v.lang.startsWith('en'));
+        if (enVoice) utterance.voice = enVoice;
+      }
+    }
+
+    // Small delay ensures previous speech queue in browser is flushed
+    setTimeout(() => {
+      try {
+        window.speechSynthesis.speak(utterance);
+        window.speechSynthesis.resume();
+      } catch (err) {
+        console.error('Failed to speak via SpeechSynthesis:', err);
+        finish();
+      }
+    }, 50);
+  };
+
+  const voices = window.speechSynthesis.getVoices();
+  if (voices && voices.length > 0) {
+    selectVoiceAndSpeak();
+  } else {
+    // Wait for voices if loading asynchronously
+    const onVoices = () => {
+      window.speechSynthesis.onvoiceschanged = null;
+      selectVoiceAndSpeak();
+    };
+    window.speechSynthesis.onvoiceschanged = onVoices;
+    setTimeout(() => {
+      if (!hasEnded && !window.speechSynthesis.speaking) {
+        selectVoiceAndSpeak();
+      }
+    }, 250);
+  }
+
+  return () => {
+    finish();
+    stopBrowserSpeech();
+  };
+}

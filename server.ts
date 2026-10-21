@@ -117,14 +117,26 @@ app.post('/api/chat', async (req, res) => {
       parts: [{ text: message }],
     });
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
-      contents,
-      config: {
-        systemInstruction: UMA_SYSTEM_INSTRUCTION,
-        temperature: 0.7,
-      },
-    });
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents,
+        config: {
+          systemInstruction: UMA_SYSTEM_INSTRUCTION,
+          temperature: 0.7,
+        },
+      });
+    } catch {
+      response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents,
+        config: {
+          systemInstruction: UMA_SYSTEM_INSTRUCTION,
+          temperature: 0.7,
+        },
+      });
+    }
 
     const reply = response.text || "Hello, I am Uma. How can I assist you with Enara's profile today?";
     res.json({ reply });

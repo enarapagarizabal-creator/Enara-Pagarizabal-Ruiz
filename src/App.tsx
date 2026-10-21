@@ -9,9 +9,10 @@ import { VoiceOrb } from './components/VoiceOrb.tsx';
 import { ConversationPanel, MessageItem } from './components/ConversationPanel.tsx';
 import { ResumePortfolio } from './components/ResumePortfolio.tsx';
 import { PdfViewerModal } from './components/PdfViewerModal.tsx';
-import { LiveAudioPlayer, float32To16BitPCMBase64 } from './utils/audioUtils.ts';
+import { LiveAudioPlayer, float32To16BitPCMBase64, speakBrowserText, stopBrowserSpeech } from './utils/audioUtils.ts';
 import { VoiceInputManager } from './utils/voiceInput.ts';
 import { ENARA_PROFILE } from './data/enaraProfile.ts';
+import { generateUmaFallbackReply } from './data/umaIntelligence.ts';
 import { ArrowRight } from 'lucide-react';
 
 export default function App() {
@@ -66,62 +67,49 @@ export default function App() {
   // Stop current TTS playback
   const stopCurrentTts = useCallback(() => {
     if (currentTtsAudioRef.current) {
-      currentTtsAudioRef.current.pause();
+      try {
+        currentTtsAudioRef.current.pause();
+      } catch {}
       currentTtsAudioRef.current = null;
     }
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
+    stopBrowserSpeech();
     setActivePlayingText(null);
     setIsModelSpeaking(false);
   }, []);
 
-  // Browser SpeechSynthesis fallback for resilience
-  const fallbackBrowserSpeak = (text: string) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      const isSpanish = /[áéíóúñ¿¡]/i.test(text) || text.includes('Hola') || text.includes('Enara') || text.includes('Deusto');
-      const voices = window.speechSynthesis.getVoices();
-      const voice = voices.find((v) =>
-        isSpanish
-          ? v.lang.startsWith('es')
-          : (v.lang.startsWith('en') && (v.name.includes('Female') || v.name.includes('Samantha') || v.name.includes('Google')))
-      ) || voices.find((v) => isSpanish ? v.lang.startsWith('es') : v.lang.startsWith('en'));
+  // Browser SpeechSynthesis engine with resilient callback state management
+  const speakWithBrowser = useCallback(
+    (text: string) => {
+      stopCurrentTts();
+      setIsModelSpeaking(true);
+      setActivePlayingText(text);
+      setStatusText('Uma is speaking in a soft woman voice...');
 
-      if (voice) utterance.voice = voice;
-      utterance.pitch = 1.05;
-      utterance.rate = 0.95;
+      speakBrowserText(
+        text,
+        () => {
+          setIsModelSpeaking(true);
+          setActivePlayingText(text);
+          setStatusText('Uma is speaking in a soft woman voice...');
+        },
+        () => {
+          setIsModelSpeaking(false);
+          setActivePlayingText(null);
+          setStatusText('Uma is ready. Click "Tap to Speak" to continue.');
+        }
+      );
+    },
+    [stopCurrentTts]
+  );
 
-      utterance.onstart = () => {
-        setIsModelSpeaking(true);
-        setStatusText('Uma is speaking in a soft woman voice...');
-      };
-      utterance.onend = () => {
-        setIsModelSpeaking(false);
-        setActivePlayingText(null);
-        setStatusText('Uma is ready.');
-      };
-      utterance.onerror = () => {
-        setIsModelSpeaking(false);
-        setActivePlayingText(null);
-        setStatusText('Uma is ready.');
-      };
-      window.speechSynthesis.speak(utterance);
-    } else {
-      setIsModelSpeaking(false);
-      setActivePlayingText(null);
-      setStatusText('Uma is ready.');
-    }
-  };
-
-  // Play TTS audio generated from server with Aoede soft woman voice
+  // Play TTS audio generated from server with Aoede voice or high quality browser fallback
   const handlePlayTts = async (text: string) => {
     stopCurrentTts();
     setIsModelSpeaking(true);
     setActivePlayingText(text);
     setStatusText('Uma is speaking in a soft woman voice...');
 
+    // Try server TTS first
     try {
       const res = await fetch('/api/tts', {
         method: 'POST',
@@ -129,32 +117,33 @@ export default function App() {
         body: JSON.stringify({ text, voiceName: 'Aoede' }),
       });
 
-      if (!res.ok) {
-        throw new Error('TTS service unavailable');
-      }
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.audio) {
+          const audio = new Audio(`data:audio/wav;base64,${data.audio}`);
+          currentTtsAudioRef.current = audio;
 
-      const data = await res.json();
-      if (data.audio) {
-        const audio = new Audio(`data:audio/wav;base64,${data.audio}`);
-        currentTtsAudioRef.current = audio;
+          audio.onended = () => {
+            setIsModelSpeaking(false);
+            setActivePlayingText(null);
+            setStatusText('Uma is ready. Click "Tap to Speak" to continue.');
+          };
 
-        audio.onended = () => {
-          setIsModelSpeaking(false);
-          setActivePlayingText(null);
-          setStatusText('Uma is ready. Click "Tap to Speak" to continue.');
-        };
+          audio.onerror = () => {
+            speakWithBrowser(text);
+          };
 
-        audio.onerror = () => {
-          fallbackBrowserSpeak(text);
-        };
-
-        await audio.play();
-      } else {
-        fallbackBrowserSpeak(text);
+          await audio.play();
+          return;
+        }
       }
     } catch {
-      fallbackBrowserSpeak(text);
+      // Fall through to browser speech synthesis
     }
+
+    // High quality resilient browser voice fallback
+    speakWithBrowser(text);
   };
 
   // Play Uma's voice intro
@@ -167,6 +156,13 @@ export default function App() {
   // Send textual inquiry to Uma & generate voice reply
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isSending) return;
+
+    // Proactively unlock speech synthesis in direct user flow
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.resume();
+      } catch {}
+    }
 
     const userMessage: MessageItem = {
       id: `msg-${Date.now()}`,
@@ -189,12 +185,13 @@ export default function App() {
         }),
       });
 
-      if (!res.ok) {
-        throw new Error('Chat API returned an error');
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok || !contentType.includes('application/json')) {
+        throw new Error(`Chat API unavailable (${res.status})`);
       }
 
       const data = await res.json();
-      const replyText = data.reply || "I am here to represent Enara Pagarizabal. How else can I help?";
+      const replyText = data.reply || generateUmaFallbackReply(text.trim());
 
       const assistantMessage: MessageItem = {
         id: `asst-${Date.now()}`,
@@ -208,15 +205,22 @@ export default function App() {
 
       // Automatically speak the response in soft woman voice
       handlePlayTts(replyText);
-    } catch {
-      const errMsg: MessageItem = {
-        id: `err-${Date.now()}`,
+    } catch (err) {
+      console.warn('API error, using intelligent client-side Uma response:', err);
+      const fallbackReply = generateUmaFallbackReply(text.trim());
+
+      const assistantMessage: MessageItem = {
+        id: `asst-${Date.now()}`,
         role: 'assistant',
-        text: "Enara is a 4th-year student of ADE + Digital Business Intelligence at Deusto Business School, specializing in marketing, branding, and customer experience. How can I elaborate further?",
+        text: fallbackReply,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
-      setMessages((prev) => [...prev, errMsg]);
-      setStatusText('Ready.');
+
+      setMessages((prev) => [...prev, assistantMessage]);
+      setStatusText('Uma has answered.');
+
+      // CRITICAL FIX: ALWAYS SPEAK THE RESPONSE EVEN ON API FALLBACK!
+      handlePlayTts(fallbackReply);
     } finally {
       setIsSending(false);
     }
@@ -226,6 +230,13 @@ export default function App() {
   const handleToggleVoiceSpeech = () => {
     if (!voiceManagerRef.current) return;
     stopCurrentTts();
+
+    // Ensure audio engines are resumed upon direct user touch/click
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.resume();
+      } catch {}
+    }
 
     if (isListeningToUser) {
       voiceManagerRef.current.stopListening();
