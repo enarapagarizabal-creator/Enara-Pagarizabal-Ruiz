@@ -1,0 +1,6 @@
+{
+  "name": "Uma - Enara Pagarizabal Voice Assistant",
+  "description": "Minimalist, aesthetic bilingual voice assistant representing Enara Pagarizabal with real-time Gemini voice conversation.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
