@@ -1,11 +1,13 @@
 import React from 'react';
-import { Volume2, Sparkles, FileText, Globe } from 'lucide-react';
+import { Volume2, Sparkles, FileText, Globe, Key } from 'lucide-react';
 
 interface HeaderProps {
   activeTab: 'voice' | 'profile' | 'cv';
   setActiveTab: (tab: 'voice' | 'profile' | 'cv') => void;
   isLiveActive: boolean;
   onOpenCvModal: () => void;
+  hasApiKey: boolean;
+  onOpenApiKeyModal: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -13,6 +15,8 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   isLiveActive,
   onOpenCvModal,
+  hasApiKey,
+  onOpenApiKeyModal,
 }) => {
   return (
     <header className="sticky top-0 z-40 backdrop-blur-xl bg-[#0c0d0e]/85 border-b border-white/[0.06] transition-all">
@@ -70,12 +74,26 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Quick PDF button */}
           <button
             onClick={onOpenCvModal}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-200 border border-amber-500/30 transition-all ml-1"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-200 border border-amber-500/30 transition-all ml-1 cursor-pointer"
             title="View Original CV Document"
           >
             <FileText className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">View PDF CV</span>
             <span className="sm:hidden">CV</span>
+          </button>
+
+          {/* Gemini AI Key button */}
+          <button
+            onClick={onOpenApiKeyModal}
+            className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
+              hasApiKey
+                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                : 'bg-white/[0.04] hover:bg-white/[0.08] text-zinc-400 hover:text-amber-200 border-white/[0.08]'
+            }`}
+            title={hasApiKey ? 'Gemini AI is connected' : 'Click to add a Gemini API Key for custom Q&A'}
+          >
+            <Key className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">{hasApiKey ? 'AI Connected' : 'Gemini Key'}</span>
           </button>
         </nav>
 

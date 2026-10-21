@@ -9,10 +9,12 @@ import { VoiceOrb } from './components/VoiceOrb.tsx';
 import { ConversationPanel, MessageItem } from './components/ConversationPanel.tsx';
 import { ResumePortfolio } from './components/ResumePortfolio.tsx';
 import { PdfViewerModal } from './components/PdfViewerModal.tsx';
+import { ApiKeyModal } from './components/ApiKeyModal.tsx';
 import { LiveAudioPlayer, float32To16BitPCMBase64, speakBrowserText, stopBrowserSpeech } from './utils/audioUtils.ts';
 import { VoiceInputManager } from './utils/voiceInput.ts';
 import { ENARA_PROFILE } from './data/enaraProfile.ts';
 import { generateUmaFallbackReply } from './data/umaIntelligence.ts';
+import { askClientGemini } from './utils/geminiClient.ts';
 import { ArrowRight } from 'lucide-react';
 
 export default function App() {
@@ -29,6 +31,24 @@ export default function App() {
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCvModalOpen, setIsCvModalOpen] = useState<boolean>(false);
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState<boolean>(false);
+  const [userApiKey, setUserApiKey] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('gemini_api_key') || (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
+    }
+    return '';
+  });
+
+  const handleSaveApiKey = (key: string) => {
+    setUserApiKey(key);
+    if (typeof window !== 'undefined') {
+      if (key) {
+        localStorage.setItem('gemini_api_key', key);
+      } else {
+        localStorage.removeItem('gemini_api_key');
+      }
+    }
+  };
 
   // Chat transcript & Q&A
   const [messages, setMessages] = useState<MessageItem[]>([
@@ -175,6 +195,9 @@ export default function App() {
     setIsSending(true);
     setStatusText('Uma is formulating a response...');
 
+    let replyText = '';
+
+    // Step 1: Try backend /api/chat (works when GEMINI_API_KEY is configured in Vercel)
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -186,44 +209,50 @@ export default function App() {
       });
 
       const contentType = res.headers.get('content-type') || '';
-      if (!res.ok || !contentType.includes('application/json')) {
-        throw new Error(`Chat API unavailable (${res.status})`);
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.reply) {
+          replyText = data.reply;
+        }
       }
-
-      const data = await res.json();
-      const replyText = data.reply || generateUmaFallbackReply(text.trim());
-
-      const assistantMessage: MessageItem = {
-        id: `asst-${Date.now()}`,
-        role: 'assistant',
-        text: replyText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-      setStatusText('Uma has answered.');
-
-      // Automatically speak the response in soft woman voice
-      handlePlayTts(replyText);
-    } catch (err) {
-      console.warn('API error, using intelligent client-side Uma response:', err);
-      const fallbackReply = generateUmaFallbackReply(text.trim());
-
-      const assistantMessage: MessageItem = {
-        id: `asst-${Date.now()}`,
-        role: 'assistant',
-        text: fallbackReply,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-      setStatusText('Uma has answered.');
-
-      // CRITICAL FIX: ALWAYS SPEAK THE RESPONSE EVEN ON API FALLBACK!
-      handlePlayTts(fallbackReply);
-    } finally {
-      setIsSending(false);
+    } catch (e) {
+      // Backend not reached, fall through to client Gemini or intelligence
     }
+
+    // Step 2: Try Client-side Gemini SDK if user provided an API key in UI
+    if (!replyText && userApiKey) {
+      try {
+        const geminiReply = await askClientGemini(
+          text.trim(),
+          messages.slice(-6).map((m) => ({ role: m.role, text: m.text })),
+          userApiKey
+        );
+        if (geminiReply) {
+          replyText = geminiReply;
+        }
+      } catch (clientErr) {
+        console.warn('Client-side Gemini call failed, falling back to Uma intelligence:', clientErr);
+      }
+    }
+
+    // Step 3: Resilient 14-intent offline intelligence engine
+    if (!replyText) {
+      replyText = generateUmaFallbackReply(text.trim());
+    }
+
+    const assistantMessage: MessageItem = {
+      id: `asst-${Date.now()}`,
+      role: 'assistant',
+      text: replyText,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    setMessages((prev) => [...prev, assistantMessage]);
+    setStatusText('Uma has answered.');
+    setIsSending(false);
+
+    // Always speak the response aloud
+    handlePlayTts(replyText);
   };
 
   // Toggle Push-to-Talk Voice Speech Input
@@ -498,6 +527,8 @@ export default function App() {
         setActiveTab={setActiveTab}
         isLiveActive={isLiveActive}
         onOpenCvModal={() => setIsCvModalOpen(true)}
+        hasApiKey={!!userApiKey}
+        onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -627,6 +658,14 @@ export default function App() {
       <PdfViewerModal
         isOpen={isCvModalOpen}
         onClose={() => setIsCvModalOpen(false)}
+      />
+
+      {/* API Key Modal */}
+      <ApiKeyModal
+        isOpen={isApiKeyModalOpen}
+        onClose={() => setIsApiKeyModalOpen(false)}
+        apiKey={userApiKey}
+        onSaveApiKey={handleSaveApiKey}
       />
     </div>
   );
