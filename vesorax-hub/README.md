@@ -16,3 +16,8 @@ Abre `index.html` en cualquier navegador. No hace falta instalar nada; necesita 
 - Todos los clientes, leads y cifras de negocio son datos simulados, salvo los del growth audit (184 días vendibles, 1.500–2.000 €/día, comisiones de marketplace del 23–26 %).
 - La velocidad máxima del barco está pendiente de confirmar con el propietario.
 - Fuera de claude.ai, "Process with AI" usa el motor de reglas integrado, y las fotos se guardan solo en el navegador.
+
+## Historial de versiones
+
+- **29 oct 2026 · v2.0:** versión definitiva con CDP, Investment Club, plano SVG del Fjord 38 Xpress, modal VIP y Vibe Matchmaker.
+- **29 oct 2026 · prueba de sincronización:** commit de prueba para comprobar que los cambios llegan a GitHub.
