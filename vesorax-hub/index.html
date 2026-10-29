@@ -54,13 +54,20 @@ const html = htm.bind(React.createElement);
    CORE BUSINESS CONSTANTS (WOTAN · 2020 Fjord 38 Xpress · Marina Port Ibiza)
    ====================================================================== */
 const CAPACITY = 11;
-const MEMBER_PRICE = 200;                 // VIP rate per seat, 0% surcharge
-const SURCHARGE = 0.40;                   // non-member surcharge
-const DAY_PASS = Math.round(MEMBER_PRICE * (1 + SURCHARGE)); // 280
-const MEMBERSHIP_FEE = 1200;              // € per season
+const SURCHARGE = 0.40;                   // non-member surcharge (+40%)
+const MEMBERSHIP_FEE = 2900;              // € per season
+const PERKS_PER_OUTING = 240;             // complimentary villa tender (€180) + welcome bottle (€60)
+// Event pricing tiers: member rate vs non-member day pass
+const EVENT_TIERS = {
+  founders: { label: "Ultra-VIP · High-Ticket Networking", member: 350, day: 490 },
+  signature: { label: "Signature Experience", member: 240, day: 340 },
+  dayclub: { label: "High-Energy & Beach Club", member: 220, day: 310 },
+  relax: { label: "Relax & Couples", member: 190, day: 270 }
+};
+const MEMBER_FROM = 190, DAY_FROM = 270;
+const RELAX_DESC = "Slow luxury cruising focused on disconnection, paddle boarding in virgin reefs, and organic Mediterranean catering on the teak lounge.";
 const SEASON_MONTHS = 6;                  // May – October
 const SELLABLE_DAYS = 184;                // from the growth audit PDF
-const BREAK_EVEN_SEATS = Math.ceil(MEMBERSHIP_FEE / (DAY_PASS - MEMBER_PRICE)); // 15
 
 const eur = (n) => (n < 0 ? "−€" : "€") + Math.abs(Math.round(n)).toLocaleString("en-US");
 const eurK = (n) => Math.abs(n) >= 1e6 ? (n < 0 ? "−" : "") + "€" + (Math.abs(n) / 1e6).toFixed(2) + "M" : (n < 0 ? "−" : "") + "€" + Math.round(Math.abs(n) / 1000) + "k";
@@ -88,26 +95,31 @@ const PROFILES_B2C = [
 
 const mk = (arr) => arr.map(([seat, p]) => ({ seat, p }));
 const INITIAL_DEPARTURES = [
-  { id: "d1", offset: 1, short: "Es Vedrà", name: "Es Vedrà Sunset Session", route: "Marina Port Ibiza → Es Vedrà → Cala d'Hort", time: "12:00 – 20:00",
+  { id: "d1", offset: 1, short: "Es Vedrà", name: "Es Vedrà Sunset Session", route: "Marina Port Ibiza → Es Vedrà → Cala d'Hort", time: "12:30 – 20:30", tier: "signature", audience: "Couples and friends chasing the golden hour", desc: "Golden hour cruise facing the magnetic island of Es Vedrà with live chill-house acoustic set, Dom Pérignon toast, and Seabob water toys.",
     occupied: mk([[0, "couples"], [1, "couples"], [3, "couples"], [4, "couples"], [5, "founders"], [7, "couples"], [8, "couples"], [9, "founders"]]), affinity: { couples: 94, founders: 52, party: 18 } },
-  { id: "d2", offset: 2, short: "Illetes", name: "Illetes Day Club", route: "Marina Port Ibiza → Illetes, Formentera", time: "10:00 – 18:00",
+  { id: "d2", offset: 2, short: "Illetes", name: "Illetes Day Club", route: "Marina Port Ibiza → Illetes, Formentera", time: "10:30 – 18:30", tier: "dayclub", audience: "Friends' groups, celebrations and beach-club lovers", desc: "Full-day anchoring in Formentera's turquoise waters with private zodiac tender drop-off directly to Beso Beach and Juan y Andrea.",
     occupied: mk([[0, "party"], [1, "party"], [2, "party"], [3, "couples"], [5, "party"], [6, "party"], [7, "party"], [8, "couples"], [10, "party"]]), affinity: { couples: 35, founders: 30, party: 94 } },
-  { id: "d3", offset: 3, short: "Cala d'Hort", name: "Cala d'Hort Slow Sail", route: "Marina Port Ibiza → Cala d'Hort → Cala Tarida", time: "10:00 – 18:00",
+  { id: "d3", offset: 3, short: "Cala d'Hort", name: "Cala d'Hort Slow Sail", route: "Marina Port Ibiza → Cala d'Hort → Cala Tarida", time: "10:30 – 18:30", tier: "relax", audience: "Couples and guests who want to disconnect", desc: RELAX_DESC,
     occupied: mk([[1, "couples"], [3, "founders"], [6, "couples"], [9, "founders"]]), affinity: { couples: 71, founders: 64, party: 25 } },
-  { id: "d4", offset: 4, short: "Tagomago", name: "Tagomago Founders Run", route: "Marina Port Ibiza → Tagomago → Cala Llonga", time: "09:30 – 17:30",
+  { id: "d4", offset: 4, short: "Tagomago", name: "Tagomago Founders Run", route: "Marina Port Ibiza → Tagomago → Cala Llonga", time: "10:30 – 18:30", tier: "founders", badge: "85% booked by VIP Club Members", audience: "Tech founders, VCs and villa owners", desc: "Private curated mastermind at sea for tech founders, VCs, and villa owners. Includes networking lunch in Tagomago, premium open bar, and Starlink high-speed Wi-Fi.",
     occupied: mk([[0, "founders"], [2, "founders"], [3, "founders"], [5, "couples"], [7, "founders"], [8, "founders"]]), affinity: { couples: 38, founders: 94, party: 31 } },
-  { id: "d5", offset: 5, short: "Espalmador", name: "Espalmador Wellness Cruise", route: "Marina Port Ibiza → S'Espalmador → Illetes", time: "10:00 – 18:00",
+  { id: "d5", offset: 5, short: "Espalmador", name: "Espalmador Wellness Cruise", route: "Marina Port Ibiza → S'Espalmador → Illetes", time: "10:30 – 18:30", tier: "relax", audience: "Couples and wellness seekers", desc: RELAX_DESC,
     occupied: mk([[0, "couples"], [1, "couples"], [2, "founders"], [3, "founders"], [4, "couples"], [6, "founders"], [8, "couples"], [10, "party"]]), affinity: { couples: 80, founders: 70, party: 20 } }
-].map((d) => ({ ...d, date: day(d.offset) }));
+].map((d) => ({ ...d, date: day(d.offset), member: EVENT_TIERS[d.tier].member, day: EVENT_TIERS[d.tier].day }));
+const dayPassOf = (d, boost) => Math.round((d.day * (1 + (boost || 0) / 100)) / 5) * 5;
+const MEMBER_AVG = INITIAL_DEPARTURES.reduce((x, d) => x + d.member, 0) / INITIAL_DEPARTURES.length;
+const DAY_AVG = INITIAL_DEPARTURES.reduce((x, d) => x + d.day, 0) / INITIAL_DEPARTURES.length;
 
 /* ======================================================================
    CDP — 8 simulated clients
    ====================================================================== */
 const TIERS = {
-  whale: { label: "High-Quality / Whales", icon: "🔥", range: "85–100", cls: "text-amber-300 bg-amber-400/10 ring-amber-400/30" },
-  mid: { label: "Mid-Tier / Aspirational", icon: "⚡", range: "50–84", cls: "text-sky-300 bg-sky-400/10 ring-sky-400/30" },
-  low: { label: "Low-Quality / Cherry Pickers", icon: "⚠️", range: "<50", cls: "text-rose-300 bg-rose-500/10 ring-rose-500/30" }
+  whale: { label: "High-Quality / Whales", range: "85–100", cls: "text-amber-300 bg-amber-400/10 ring-amber-400/30" },
+  mid: { label: "Mid-Tier / Aspirational", range: "50–84", cls: "text-sky-300 bg-sky-400/10 ring-sky-400/30" },
+  low: { label: "Low-Quality / Cherry Pickers", range: "<50", cls: "text-rose-300 bg-rose-500/10 ring-rose-500/30" }
 };
+const TIER_DOT = { whale: "bg-amber-400", mid: "bg-sky-400", low: "bg-rose-400" };
+const TierDot = ({ t }) => html`<span aria-hidden="true" className=${"inline-block w-1.5 h-1.5 rounded-full shrink-0 " + TIER_DOT[t]}></span>`;
 const tierOf = (score) => (score >= 85 ? "whale" : score >= 50 ? "mid" : "low");
 
 const CLIENTS = [
@@ -117,13 +129,13 @@ const CLIENTS = [
       { date: "2026-08-03", desc: "4 Captain's Lounge seats · Es Vedrà sunset", amount: 1120 },
       { date: "2026-07-27", desc: "4 seats · Illetes + Seabob + rosé", amount: 1420 }
     ], prior: 3300, cac: 210, surchargeMonth: 640,
-    nba: { prob: 91, kind: "upgrade", title: "VIP Membership upgrade", text: "This client has already paid €640 in non-member surcharges this month (8 seats × €80). Probability of VIP Membership conversion: 91%." } },
+    nba: { prob: 91, kind: "upgrade", title: "VIP Membership upgrade", text: "This client has already paid €640 in non-member surcharges this month (8 day-pass seats). Probability of VIP Membership conversion: 91%." } },
   { id: "c2", name: "Chiara Montalbano", initials: "CM", origin: "Milan, Italy", age: 52, profession: "Principal, single-family office", worth: "€120M+ (est.)", capacity: "€40k+ / week in Ibiza", stay: "Owns a villa in Es Cubells · all season", partner: { name: "Es Cubells Estates", commission: 10 }, channel: "B2B villa partner", score: 93, member: true, vibe: "Sunset & Chill Couples",
     history: [
       { date: "2026-09-05", desc: "6 seats (member rate) · Espalmador + caviar service", amount: 1580 },
       { date: "2026-08-20", desc: "11 seats (member rate) · full-boat birthday + DJ", amount: 2800 },
       { date: "2026-07-14", desc: "3 seats (member rate) · Cala d'Hort", amount: 600 },
-      { date: "2026-04-30", desc: "VIP Membership · 2026 season", amount: 1200 }
+      { date: "2026-04-30", desc: "VIP Membership · 2026 season", amount: 2900 }
     ], prior: 6400, cac: 340, surchargeMonth: 0,
     nba: { prob: 64, kind: "invest", title: "Investment Club invitation", text: "Member for 2 seasons, 20 seats booked in 2026 and owns a villa in Es Cubells. Matches the co-investor profile for boat #2 of the Investment Club. Probability of interest: 64%." } },
   { id: "c3", name: "Omar Haddad", initials: "OH", origin: "Dubai, UAE", age: 44, profession: "Real-estate developer", worth: "€80M (est.)", capacity: "€30k / week in Ibiza", stay: "Rented villa, Cala Jondal · 2 weeks in August", partner: { name: "Jondal Villa Collective", commission: 10 }, channel: "B2B villa partner", score: 88, member: false, vibe: "Day Party & DJ",
@@ -131,14 +143,14 @@ const CLIENTS = [
       { date: "2026-08-22", desc: "2-boat tandem · 16 guests · Formentera + DJ", amount: 5080 },
       { date: "2026-07-02", desc: "5 seats · Es Vedrà sunset + Magnum Dom Pérignon", amount: 1950 }
     ], prior: 0, cac: 480, surchargeMonth: 1280,
-    nba: { prob: 87, kind: "upgrade", title: "Membership + 2027 tandem pre-booking", text: "Paid €1,280 in surcharges on a single tandem day, more than the €1,200 season fee. Offer membership and hold 2 boats for his August 2027 week in the priority window. Probability: 87%." } },
+    nba: { prob: 87, kind: "upgrade", title: "Membership + 2027 tandem pre-booking", text: "Paid €1,280 in surcharges on a single tandem day. Two more group days and the €2,900 membership pays for itself. Offer membership and hold 2 boats for his August 2027 week in the priority window. Probability: 87%." } },
   { id: "c4", name: "Emma & James Whitfield", initials: "EW", origin: "London, UK", age: 38, profession: "Corporate lawyers (couple)", worth: "€3–5M household (est.)", capacity: "€6k / week in Ibiza", stay: "Hotel, Santa Eulària · returns every June & August", partner: null, channel: "Direct · Instagram ad", score: 74, member: false, vibe: "Sunset & Chill Couples",
     history: [
       { date: "2026-08-28", desc: "2 Stern seats · Es Vedrà sunset", amount: 560 },
       { date: "2026-08-19", desc: "2 seats · Illetes Day Club", amount: 560 },
       { date: "2026-07-10", desc: "2 seats · Tagomago + Seabob", amount: 810 }
     ], prior: 0, cac: 95, surchargeMonth: 320,
-    nba: { prob: 68, kind: "upgrade", title: "Membership upsell", text: "6 seats this season and €480 paid in surcharges. They come back twice a year: at 15 seats the membership pays for itself. Probability of conversion: 68%." } },
+    nba: { prob: 41, kind: "upgrade", title: "Membership upsell for 2027", text: "6 seats this season and €480 paid in surcharges. As a couple they need about 7 outings for the €2,900 membership to pay off, so pitch it with a 2027 Sunset Session pack. Probability of conversion: 41%." } },
   { id: "c5", name: "Lucía Ferrer", initials: "LF", origin: "Madrid, Spain", age: 34, profession: "Marketing director, consumer brand", worth: "€1–2M (est.)", capacity: "€3k / week in Ibiza", stay: "Holiday rental, Sant Antoni · 1 week", partner: null, channel: "Direct · Google search", score: 63, member: false, vibe: "Day Party & DJ",
     history: [{ date: "2026-09-12", desc: "4 seats · girls' trip to Formentera + 2 rosé", amount: 1220 }], prior: 0, cac: 120, surchargeMonth: 320,
     nba: { prob: 54, kind: "referral", title: "Referral activation", text: "Brought 3 friends on her first trip. Turn her into a referrer: each friend who books earns her a free Seabob session. Probability of 1+ referral: 54%." } },
@@ -162,7 +174,7 @@ const ltvOf = (c) => c.prior + c.history.reduce((a, h) => a + h.amount, 0);
 function whatsappFor(c) {
   const first = c.name.split(" ")[0];
   const m = {
-    upgrade: `Hi ${first}! Thank you for sailing with WOTAN this summer. We noticed you've paid ${eur(c.surchargeMonth)} in non-member surcharges this month alone. With the VIP Membership (${eur(MEMBERSHIP_FEE)} / season) every seat is a fixed ${eur(MEMBER_PRICE)} for you and your guests, you get a 7-day priority booking window, and our tender picks you up at your villa. Shall I activate it today so your next trip is already at the member rate? 🥂`,
+    upgrade: `Hi ${first}! Thank you for sailing with WOTAN this summer. We noticed you've paid ${eur(c.surchargeMonth)} in non-member surcharges this month alone. With the VIP Membership (${eur(MEMBERSHIP_FEE)} / season) you and your guests pay member rates on every event with no 40% surcharge, you get a 7-day priority window on the Tagomago Founders Run, and our tender picks you up at your villa. Shall I activate it today so your next trip is already at the member rate?`,
     invest: `Hi ${first}, it's been a pleasure having you on board again this season. We're opening the Vesorax Investment Club to a few members before boat #2 joins the fleet next summer. Given how often you sail with us, I'd love to share the investor memo and the 2027 projections. Would a short call this week work for you?`,
     referral: `Hi ${first}! We loved having you and your friends on board. Here's your personal invite link: every friend who books a seat with it gets a welcome bottle, and you get a free Seabob session for each one. Want me to send it?`,
     tandem: `Hi ${first}! By maritime law our Fjord 38 takes a maximum of 11 guests plus the captain, so 15 people can't sail on one boat. What I can offer you is a second boat sailing in tandem, so the whole group stays together all day. Shall I send you the tandem quote?`,
@@ -248,7 +260,7 @@ function analyzeRules(text) {
   if (capFail) suggestion.push("Offer a second boat sailing in tandem and hand the close to the team on WhatsApp today.");
   if (geoFail) suggestion.push("Reroute to the premium Es Vedrà sunset or Illetes (Formentera) instead of losing the lead.");
   if (night) suggestion.push("Replace the overnight with a sunset finish and a tender transfer back to the villa.");
-  if (profile === "vip") suggestion.push(`Pitch the VIP Membership: ${eur(MEMBER_PRICE)} per seat instead of ${eur(DAY_PASS)}, ${eur(MEMBERSHIP_FEE)} per season.`, "If they stay in a villa, log the B2B villa partner for commission and repeat outings.");
+  if (profile === "vip") suggestion.push(`Pitch the VIP Membership (${eur(MEMBERSHIP_FEE)} / season): member rates from ${eur(MEMBER_FROM)} per seat, no 40% surcharge, priority on the Founders Run.`, "If they stay in a villa, log the B2B villa partner for commission and repeat outings.");
   if (profile === "seat") suggestion.push("Sell seats on the next departure: 2 concrete dates and the day-pass price.", "Use real scarcity (seats left) and close payment in the chat. Upsell membership after the trip.");
   if (profile === "lost") suggestion.push("Close politely and move to newsletter nurture. No more sales time.");
 
@@ -262,7 +274,7 @@ function buildReply(lang, profile, c) {
     if (c.capFail) p.push(`Eso no es posible debido a la normativa marítima, que limita el barco a 11 pasajeros más el capitán, pero puedo ofrecerte un segundo barco navegando en tándem para que vuestro grupo de ${c.pax} vaya junto. El equipo te pasa los detalles por WhatsApp.`);
     if (c.geoFail) p.push(`Eso no es posible debido a que operamos solo en Ibiza y Formentera y un day-charter de 8 horas no permite ir a ${c.dest} y volver, pero puedo ofrecerte la ruta premium a Es Vedrà al atardecer o Illetes en Formentera.`);
     if (c.night) p.push("Pernoctar no es posible debido a que es un chárter diurno de 8 horas, pero puedo ofrecerte terminar con la puesta de sol frente a Es Vedrà y traslado en tender a vuestra villa.");
-    if (profile === "vip") p.push(`Para varias salidas te recomiendo la membresía VIP (${MEMBERSHIP_FEE} € / temporada): ${MEMBER_PRICE} € por plaza en lugar de ${DAY_PASS} € y 7 días de reserva prioritaria.`);
+    if (profile === "vip") p.push(`Para varias salidas te recomiendo la membresía VIP (2.900 € / temporada): tarifa de miembro desde ${MEMBER_FROM} € por plaza, sin el recargo del 40 %, y 7 días de reserva prioritaria.`);
     if (profile === "seat") p.push("Quedan plazas en las próximas salidas y te reservo la tuya ahora mismo.");
     if (profile === "lost") p.push("Si cambian vuestros planes, estaremos encantados de recibiros en Ibiza o Formentera.");
     if (c.pax == null && profile !== "lost") p.push("¿Cuántas personas seríais y qué fecha os viene mejor?");
@@ -272,7 +284,7 @@ function buildReply(lang, profile, c) {
     if (c.capFail) p.push(`That isn't possible because maritime law limits our yacht to 11 guests plus the captain, but I can offer you a second boat sailing in tandem so your group of ${c.pax} stays together. Our team will send the details on WhatsApp.`);
     if (c.geoFail) p.push(`That isn't possible because we only operate in Ibiza and Formentera, and an 8-hour day charter can't reach ${c.dest} and return, but I can offer you our premium Es Vedrà sunset route or Illetes in Formentera.`);
     if (c.night) p.push("Staying overnight isn't possible because this is an 8-hour day charter, but I can offer you a sunset finish at Es Vedrà with a tender transfer back to your villa.");
-    if (profile === "vip") p.push(`For several outings our VIP Membership (€${MEMBERSHIP_FEE} / season) is the smart choice: €${MEMBER_PRICE} per seat instead of €${DAY_PASS}, plus a 7-day priority booking window.`);
+    if (profile === "vip") p.push(`For several outings our VIP Membership (${eur(MEMBERSHIP_FEE)} / season) is the smart choice: member rates from ${eur(MEMBER_FROM)} per seat with no 40% surcharge, plus a 7-day priority booking window.`);
     if (profile === "seat") p.push("We still have seats on the upcoming departures and I can hold yours right now.");
     if (profile === "lost") p.push("If your plans change, we'd love to welcome you on board in Ibiza or Formentera.");
     if (c.pax == null && profile !== "lost") p.push("How many guests will join, and which date suits you best?");
@@ -281,7 +293,7 @@ function buildReply(lang, profile, c) {
   return p.join("\n\n");
 }
 
-const AI_PROMPT = `You are WOTAN, the AI sales engine of the Vesorax agency for a "Public Yacht Club" on a 2020 Fjord 38 Xpress at Marina Port Ibiza (individual seats: day pass €${DAY_PASS} incl. 40% non-member surcharge, VIP member €${MEMBER_PRICE}/seat, membership €${MEMBERSHIP_FEE}/season; B2B deals with villa managers).
+const AI_PROMPT = `You are WOTAN, the AI sales engine of the Vesorax agency for a "Public Yacht Club" on a 2020 Fjord 38 Xpress at Marina Port Ibiza (individual seats per event: VIP member rate €190–€350, non-member day pass +40% at €270–€490, VIP membership €2,900/season; 8-hour charters between 10:30 and 20:30; B2B deals with villa managers).
 MANDATORY RULES:
 1. Geography: Ibiza and Formentera ONLY. Mallorca, Menorca, Valencia etc. are refused politely (8-hour day charter) and rerouted to a premium alternative (Es Vedrà, Illetes).
 2. Capacity: max 11 passengers + captain by maritime law. 12+ → refuse citing the law, propose a 2nd boat in tandem and hand the close to the team on WhatsApp.
@@ -331,7 +343,7 @@ function simulate(boats, occ, membersPerBoat) {
   const tradRev = tradDays * m.tradDayRate;
   const tradEbitda = tradRev - tradRev * m.tradMarketplaceShare * m.marketplaceFee - tradDays * m.opCostPerDay - m.fixedPerBoat;
   const seats = SELLABLE_DAYS * CAPACITY * occ;
-  const blended = m.memberSeatShare * MEMBER_PRICE + (1 - m.memberSeatShare) * DAY_PASS;
+  const blended = m.memberSeatShare * MEMBER_AVG + (1 - m.memberSeatShare) * DAY_AVG;
   const seatRev = seats * blended, extras = seats * m.extrasPerSeat, memb = membersPerBoat * MEMBERSHIP_FEE;
   const revBoat = seatRev + extras + memb;
   const costBoat = SELLABLE_DAYS * m.opCostPerDay + seats * m.fbPerSeat + (seatRev + extras) * m.acquisition + m.fixedPerBoat;
@@ -371,6 +383,11 @@ function TopToggle({ mode, setMode }) {
           ${opt("client", "CLIENT MODE: PUBLIC YACHT CLUB (B2C)", "CLIENT · YACHT CLUB")}
         </div>
       </div>
+      ${biz && html`<div className="border-t border-[#1F222B]"><div className="max-w-7xl mx-auto px-4 py-1.5 flex justify-start sm:justify-end">
+        <span className="inline-flex items-center gap-2 rounded-full border border-[#1F222B] bg-[#111318] px-3 py-1 text-[11px] font-mono text-[#C9CDD8] max-w-full" role="status" aria-label="Marine telemetry">
+          <span className="relative flex h-1.5 w-1.5 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"></span><span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400"></span></span>
+          <span className="truncate">Marine Telemetry: 11 kt E | Waves 0.3m | Formentera & Es Vedrà: <span className="text-emerald-400 font-semibold">GREEN FLAG</span></span>
+        </span></div></div>`}
     </header>`;
 }
 
@@ -495,12 +512,12 @@ function DefaultPhoto({ kind }) {
 }
 
 const PHOTO_SLOTS = [
-  { id: "exterior", title: "Exterior · Under way", caption: "Deep-V Fjord hull, walkaround deck, T-top shade.",
+  { id: "exterior", img: "img/exterior.jpg", title: "Exterior · Under way", caption: "Scandinavian design, walkaround deck and T-top shade.",
     specs: [["Length", "11.63 m"], ["Beam", "3.64 m"], ["Year", "2020"], ["Home port", "Marina Port Ibiza"]] },
-  { id: "bow", title: "Bow Sunpad", caption: "Seats 1–3. The front-row sunbed with open sea views.",
-    specs: [["Engines", "2 × Volvo Penta"], ["Top speed", "≈ 40 kn*"], ["Guests", "11 + captain"], ["Trip", "8 h day charter"]] },
-  { id: "lounge", title: "Central Teak Lounge", caption: "Seats 4–8. U-shaped lounge around the teak table.",
-    specs: [["Audio", "Fusion Marine"], ["Shade", "Hard T-top"], ["Table", "Teak, central"], ["Extras", "Seabob · Champagne"]] }
+  { id: "bow", img: "img/aerial.jpg", title: "Bow Sunpad", caption: "Seats 1–3. Front-row sunbed, seen from above with the aft sundeck.",
+    specs: [["Engines", "2 × 300 hp Mercury"], ["Speed", "40 kn max · 26 cruise"], ["Guests", "11 + skipper"], ["Charter", "8 h · 10:30–20:30"]] },
+  { id: "lounge", img: "img/lounge.jpg", title: "Central Teak Lounge", caption: "Seats 4–8. U-shaped lounge around the teak table.",
+    specs: [["Audio", "Fusion zoned Bluetooth"], ["Dining", "Convertible table for 8"], ["Comfort", "Cabin + full bathroom"], ["Extras", "Seabob €320 · E-foil €500"]] }
 ];
 const PHOTO_LS = "vesorax-photos-v1";
 
@@ -579,6 +596,8 @@ function useBoatPhotos(say) {
 
 function PhotoCard({ slot, src, active, setActive, onFile, onReset }) {
   const [drag, setDrag] = useState(false);
+  const [broken, setBroken] = useState(false);
+  const shown = src || (!broken && slot.img) || null;
   const input = useRef(null);
   return html`
     <article className=${"group rounded-3xl overflow-hidden bg-white border transition " + (active ? "border-[#C8A45D] shadow-[0_20px_50px_-24px_rgba(14,34,64,.45)]" : "border-[#0E2240]/10")}
@@ -589,12 +608,12 @@ function PhotoCard({ slot, src, active, setActive, onFile, onReset }) {
         onDragOver=${(e) => { e.preventDefault(); setDrag(true); }} onDragLeave=${() => setDrag(false)}
         onDrop=${(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) onFile(slot.id, f); }}
         className=${"relative aspect-[16/10] w-full cursor-pointer overflow-hidden " + (drag ? "ring-4 ring-inset ring-[#C8A45D]" : "")}>
-        ${src ? html`<img src=${src} alt=${slot.title} className="w-full h-full object-cover" />` : html`<${DefaultPhoto} kind=${slot.id} />`}
+        ${shown ? html`<img src=${shown} alt=${slot.title} className="w-full h-full object-cover" onError=${() => { if (!src) setBroken(true); }} />` : html`<${DefaultPhoto} kind=${slot.id} />`}
         <div className=${"absolute inset-x-3 bottom-3 flex justify-between items-center gap-2 transition " + (active || drag ? "opacity-100" : "opacity-0 group-hover:opacity-100")}>
-          <span className="rounded-full bg-[#0E2240]/85 text-[#F8F6F1] text-[11px] font-semibold px-3 py-1.5 backdrop-blur">${drag ? "Drop to replace" : "Click · drop · ⌘V to " + (src ? "replace" : "add photo")}</span>
+          <span className="rounded-full bg-[#0E2240]/85 text-[#F8F6F1] text-[11px] font-semibold px-3 py-1.5 backdrop-blur">${drag ? "Drop to replace" : "Click · drop · ⌘V to " + (shown ? "replace" : "add photo")}</span>
           ${src && html`<button type="button" onClick=${(e) => { e.stopPropagation(); onReset(slot.id); }} className="rounded-full bg-white/90 text-[#0E2240] text-[11px] font-bold px-3 py-1.5 hover:bg-white">Reset</button>`}
         </div>
-        ${!src && html`<span className="absolute top-3 left-3 rounded-full bg-white/85 text-[#0E2240] text-[10px] font-bold uppercase tracking-widest px-2.5 py-1">Illustration</span>`}
+        ${!shown && html`<span className="absolute top-3 left-3 rounded-full bg-white/85 text-[#0E2240] text-[10px] font-bold uppercase tracking-widest px-2.5 py-1">Illustration</span>`}
         <input ref=${input} type="file" accept="image/*" className="hidden" id=${"photo-" + slot.id} onChange=${(e) => { const f = e.target.files[0]; if (f) onFile(slot.id, f); e.target.value = ""; }} />
       </div>
       <div className="p-5">
@@ -607,17 +626,28 @@ function PhotoCard({ slot, src, active, setActive, onFile, onReset }) {
     </article>`;
 }
 
+const SAVE_MIX = [
+  { id: "mixed", label: "Mixed season", save: Math.round(DAY_AVG - MEMBER_AVG) },
+  { id: "founders", label: "Founders Runs", save: EVENT_TIERS.founders.day - EVENT_TIERS.founders.member },
+  { id: "signature", label: "Sunset Sessions", save: EVENT_TIERS.signature.day - EVENT_TIERS.signature.member },
+  { id: "relax", label: "Relax & Couples", save: EVENT_TIERS.relax.day - EVENT_TIERS.relax.member }
+];
+
 function VipModal({ open, onClose, isMember, onJoin }) {
-  const [seats, setSeats] = useState(BREAK_EVEN_SEATS);
+  const [outings, setOutings] = useState(5);
+  const [seats, setSeats] = useState(4);
+  const [mix, setMix] = useState("mixed");
   useEsc(open, onClose);
   if (!open) return null;
-  const save = seats * (DAY_PASS - MEMBER_PRICE), net = save - MEMBERSHIP_FEE;
-  const pct = clamp((seats / 40) * 100, 0, 100), bePct = (BREAK_EVEN_SEATS / 40) * 100;
-  const perks = [
-    ["0% surcharge all season", `A fixed ${eur(MEMBER_PRICE)} per seat for you and your guests, instead of ${eur(DAY_PASS)}.`],
-    ["Priority booking window", "Book every departure 7 days before the general public. Sunset Fridays sell out first."],
-    ["Concierge & villa tender", "Private zodiac pickup from your villa or beach club in Cala Jondal and Es Cubells."],
-    ["Welcome bottle on every trip", "Champagne or rosé waiting at your seat each time you sail."]
+  const save = SAVE_MIX.find((m) => m.id === mix).save;
+  const perOuting = seats * save + PERKS_PER_OUTING;
+  const surcharge = outings * seats * save, perks = outings * PERKS_PER_OUTING, total = surcharge + perks, net = total - MEMBERSHIP_FEE;
+  const be = Math.ceil(MEMBERSHIP_FEE / perOuting), MAXO = 12;
+  const perkList = [
+    ["0% surcharge on every event", `Member rates for you and your guests: ${eur(EVENT_TIERS.relax.member)} Relax · ${eur(EVENT_TIERS.dayclub.member)} Day Club · ${eur(EVENT_TIERS.signature.member)} Sunset · ${eur(EVENT_TIERS.founders.member)} Founders Run. Non-members pay 40% more.`],
+    ["Priority booking window", "Book every departure 7 days before the general public, including the high-ticket Tagomago Founders Run."],
+    ["Concierge & villa tender", "Complimentary private zodiac pickup from your villa or beach club in Cala Jondal and Es Cubells (valued at €180 per outing)."],
+    ["Welcome bottle on every trip", "Champagne or rosé waiting at your seat each time you sail (valued at €60)."]
   ];
   return html`
     <div className="fixed inset-0 z-50 bg-[#0E2240]/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6" onClick=${onClose}>
@@ -630,33 +660,40 @@ function VipModal({ open, onClose, isMember, onJoin }) {
           <p className="mt-2 text-[#F8F6F1]/70"><span className="font-lux text-3xl text-[#C8A45D] tabnum">${eur(MEMBERSHIP_FEE)}</span> <span className="text-sm">per season · May to October</span></p>
 
           <ul className="grid sm:grid-cols-2 gap-3 mt-7">
-            ${perks.map(([t, d], i) => html`<li key=${i} className="rounded-2xl bg-white/[.06] ring-1 ring-white/10 p-4">
+            ${perkList.map(([t, d], i) => html`<li key=${i} className="rounded-2xl bg-white/[.06] ring-1 ring-white/10 p-4">
               <div className="flex items-start gap-3"><svg width="22" height="22" viewBox="0 0 22 22" className="shrink-0 mt-0.5" aria-hidden="true"><circle cx="11" cy="11" r="10" fill="none" stroke="#C8A45D" strokeWidth="1.5"/><path d="M6.5 11.5l3 3 6-7" stroke="#C8A45D" strokeWidth="1.8" fill="none" strokeLinecap="round"/></svg>
               <div><p className="font-bold">${t}</p><p className="text-sm text-[#F8F6F1]/65 mt-0.5">${d}</p></div></div></li>`)}
           </ul>
 
           <section className="mt-8 rounded-2xl bg-[#F8F6F1] text-[#0E2240] p-5 sm:p-6" aria-labelledby="roi-h">
             <h3 id="roi-h" className="font-lux text-2xl">Your break-even calculator</h3>
-            <label htmlFor="roi-seats" className="block text-sm font-semibold mt-3">How many seats will you book this summer? <span className="tabnum font-extrabold text-lg ml-1">${seats}</span></label>
-            <input id="roi-seats" type="range" min="1" max="40" value=${seats} onInput=${(e) => setSeats(+e.target.value)} className="w-full mt-2" />
-            <div className="relative h-3 rounded-full bg-[#0E2240]/10 mt-3 overflow-hidden">
-              <div className=${"absolute inset-y-0 left-0 rounded-full " + (net >= 0 ? "bg-[#2E9E6B]" : "bg-[#C8A45D]")} style=${{ width: pct + "%" }}></div>
-              <div className="absolute inset-y-0 w-0.5 bg-[#0E2240]" style=${{ left: bePct + "%" }}></div>
+            <p className="text-sm text-[#0E2240]/65 mt-1">Which events will you mostly book?</p>
+            <div className="flex flex-wrap gap-2 mt-2">
+              ${SAVE_MIX.map((m) => html`<button key=${m.id} type="button" aria-pressed=${mix === m.id} onClick=${() => setMix(m.id)}
+                className=${"rounded-full px-3.5 py-1.5 text-xs font-bold border transition " + (mix === m.id ? "bg-[#0E2240] text-[#F8F6F1] border-[#0E2240]" : "bg-white border-[#0E2240]/15 hover:border-[#C8A45D]")}>${m.label} · save ${eur(m.save)}/seat</button>`)}
             </div>
-            <p className="text-[11px] text-[#0E2240]/55 mt-1 tabnum" style=${{ paddingLeft: `calc(${bePct}% - 40px)` }}>Break-even: ${BREAK_EVEN_SEATS} seats</p>
-            <div className="grid grid-cols-3 gap-3 mt-4 text-center">
-              <div className="rounded-xl bg-white p-3"><p className="text-[10px] uppercase tracking-widest font-bold text-[#0E2240]/50">Day pass</p><p className="font-extrabold tabnum">${eur(seats * DAY_PASS)}</p></div>
-              <div className="rounded-xl bg-white p-3"><p className="text-[10px] uppercase tracking-widest font-bold text-[#0E2240]/50">Member</p><p className="font-extrabold tabnum">${eur(seats * MEMBER_PRICE + MEMBERSHIP_FEE)}</p></div>
-              <div className=${"rounded-xl p-3 " + (net >= 0 ? "bg-[#2E9E6B] text-white" : "bg-[#EADBB8]")}><p className="text-[10px] uppercase tracking-widest font-bold opacity-70">${net > 0 ? "You save" : net === 0 ? "Fee paid back" : "To break even"}</p><p className="font-extrabold tabnum">${net > 0 ? eur(net) : net === 0 ? "Break-even" : (BREAK_EVEN_SEATS - seats) + " more seat" + (BREAK_EVEN_SEATS - seats === 1 ? "" : "s")}</p></div>
+            <div className="grid sm:grid-cols-2 gap-4 mt-4">
+              <label htmlFor="roi-outings" className="block text-sm font-semibold">Group outings this summer <span className="tabnum font-extrabold text-lg ml-1">${outings}</span>
+                <input id="roi-outings" type="range" min="1" max=${MAXO} value=${outings} onInput=${(e) => setOutings(+e.target.value)} className="w-full mt-1" /></label>
+              <label htmlFor="roi-seats" className="block text-sm font-semibold">Seats per outing (you + guests) <span className="tabnum font-extrabold text-lg ml-1">${seats}</span>
+                <input id="roi-seats" type="range" min="1" max="8" value=${seats} onInput=${(e) => setSeats(+e.target.value)} className="w-full mt-1" /></label>
             </div>
-            <p className="text-sm mt-3 tabnum"><b>${seats} seats × ${eur(DAY_PASS - MEMBER_PRICE)} saved = ${eur(save)}</b> <span className="text-[#0E2240]/60">vs the ${eur(MEMBERSHIP_FEE)} season fee.</span></p>
-            <div className="hidden">
+            <div className="relative h-3 rounded-full bg-[#0E2240]/10 mt-4 overflow-hidden">
+              <div className=${"absolute inset-y-0 left-0 rounded-full " + (net >= 0 ? "bg-[#2E9E6B]" : "bg-[#C8A45D]")} style=${{ width: clamp((outings / MAXO) * 100, 0, 100) + "%" }}></div>
+              ${be <= MAXO && html`<div className="absolute inset-y-0 w-0.5 bg-[#0E2240]" style=${{ left: (be / MAXO) * 100 + "%" }}></div>`}
             </div>
-            <p className="text-sm mt-4 text-[#0E2240]/75">Example: 4 trips with 3 friends = 16 seats → you save ${eur(16 * (DAY_PASS - MEMBER_PRICE))}, which covers the ${eur(MEMBERSHIP_FEE)} fee with ${eur(16 * (DAY_PASS - MEMBER_PRICE) - MEMBERSHIP_FEE)} to spare.</p>
+            <p className="text-[11px] text-[#0E2240]/60 mt-1 tabnum">Pays for itself after <b>${be} outing${be === 1 ? "" : "s"}</b> (${eur(perOuting)} of value per outing)</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 text-center">
+              <div className="rounded-xl bg-white p-3"><p className="text-[10px] uppercase tracking-widest font-bold text-[#0E2240]/50">Surcharge saved</p><p className="font-extrabold tabnum">${eur(surcharge)}</p></div>
+              <div className="rounded-xl bg-white p-3"><p className="text-[10px] uppercase tracking-widest font-bold text-[#0E2240]/50">Tender & bottle</p><p className="font-extrabold tabnum">${eur(perks)}</p></div>
+              <div className="rounded-xl bg-white p-3"><p className="text-[10px] uppercase tracking-widest font-bold text-[#0E2240]/50">Season fee</p><p className="font-extrabold tabnum">${eur(MEMBERSHIP_FEE)}</p></div>
+              <div className=${"rounded-xl p-3 " + (net >= 0 ? "bg-[#2E9E6B] text-white" : "bg-[#EADBB8]")}><p className="text-[10px] uppercase tracking-widest font-bold opacity-70">${net > 0 ? "Net gain" : net === 0 ? "Fee paid back" : "To break even"}</p><p className="font-extrabold tabnum">${net > 0 ? eur(net) : net === 0 ? "Break-even" : (be - outings) + " more outing" + (be - outings === 1 ? "" : "s")}</p></div>
+            </div>
+            <p className="text-sm mt-4 text-[#0E2240]/75">Each member seat saves ${eur(EVENT_TIERS.relax.day - EVENT_TIERS.relax.member)}–${eur(EVENT_TIERS.founders.day - EVENT_TIERS.founders.member)} in surcharges. Add the complimentary tender and welcome bottle, and 4–5 group outings cover the fee. On Founders Runs, 4.</p>
           </section>
 
           <div className="flex flex-col sm:flex-row gap-3 mt-7">
-            ${isMember ? html`<p className="flex-1 text-center rounded-xl bg-[#2E9E6B] py-3.5 font-bold">You're a VIP member · ${eur(MEMBER_PRICE)} per seat is active</p>` :
+            ${isMember ? html`<p className="flex-1 text-center rounded-xl bg-[#2E9E6B] py-3.5 font-bold">You're a VIP member · member rates are active on every event</p>` :
               html`<button type="button" onClick=${onJoin} className="flex-1 rounded-xl bg-[#C8A45D] text-[#0E2240] font-extrabold py-3.5 hover:bg-[#EADBB8] transition">Join for ${eur(MEMBERSHIP_FEE)} / season</button>`}
             <button type="button" onClick=${onClose} className="rounded-xl ring-1 ring-white/25 px-6 py-3.5 font-semibold hover:bg-white/10">Keep browsing</button>
           </div>
@@ -690,7 +727,8 @@ function ClientView({ s, a, say }) {
   }, [activePhoto, save]);
 
   const left = CAPACITY - dep.occupied.length;
-  const unit = s.isMember ? MEMBER_PRICE : s.seatPrice;
+  const dayPrice = dayPassOf(dep, s.priceBoost), memberPrice = dep.member;
+  const unit = s.isMember ? memberPrice : dayPrice;
   const onSeat = (i) => { setFocus(i); setSelected((x) => (x.includes(i) ? x.filter((y) => y !== i) : [...x, i])); };
   const ranking = profile ? [...s.departures].sort((x, y) => y.affinity[profile] - x.affinity[profile]) : [];
   const best = ranking[0];
@@ -724,6 +762,7 @@ function ClientView({ s, a, say }) {
               className=${"shrink-0 rounded-2xl border px-4 py-3 text-left transition min-w-[176px] " + (on ? "bg-white border-[#0E2240] shadow-md" : "bg-white/60 border-[#0E2240]/10 hover:border-[#C8A45D]")}>
               <span className="block text-[11px] font-bold uppercase tracking-widest text-[#0E2240]/50">${fmtDate(d.date)}</span>
               <span className="block font-bold text-[#0E2240] text-sm mt-0.5">${d.name}</span>
+              <span className="block text-[11px] text-[#0E2240]/55 tabnum mt-0.5">Member ${eur(d.member)} · Day pass ${eur(dayPassOf(d, s.priceBoost))}</span>
               <span className=${"block text-xs font-bold mt-1 " + (l <= 3 ? "text-[#D04A4A]" : "text-[#2E9E6B]")}>${l === 0 ? "Sold out" : l + (l === 1 ? " seat left" : " seats left")}</span>
             </button>`;
           })}
@@ -736,6 +775,14 @@ function ClientView({ s, a, say }) {
               <span className="text-xs font-bold text-[#0E2240]/50 tabnum">${dep.time}</span>
             </div>
             <p className="text-sm text-[#0E2240]/60 mb-3">${dep.route}</p>
+            <div key=${dep.id} className="rise rounded-2xl bg-[#F8F6F1] border border-[#0E2240]/10 p-4 mb-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#0E2240] text-[#F8F6F1] text-[10px] font-bold uppercase tracking-[.16em] px-2.5 py-1"><span className="w-1.5 h-1.5 rounded-full bg-[#C8A45D]"></span>${EVENT_TIERS[dep.tier].label}</span>
+                ${dep.badge && html`<span className="inline-flex items-center gap-1.5 rounded-full border border-[#C8A45D] text-[#7A5A1E] text-[11px] font-bold px-2.5 py-1"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0.8l1.2 2.6 2.8.3-2.1 1.9.6 2.8L5 7 2.5 8.4l.6-2.8L1 3.7l2.8-.3z" fill="#C8A45D"/></svg>${dep.badge}</span>`}
+              </div>
+              <p className="text-sm text-[#0E2240]/80 mt-3 leading-relaxed">${dep.desc}</p>
+              <p className="text-xs text-[#0E2240]/60 mt-2"><span className="font-bold uppercase tracking-[.14em] text-[10px] text-[#0E2240]/45 mr-1.5">Ideal for</span>${dep.audience}</p>
+            </div>
             <div className="flex flex-wrap gap-4 mb-3 text-xs font-semibold text-[#0E2240]/70">
               <span className="flex items-center gap-1.5"><i className="w-3 h-3 rounded-full bg-[#2E9E6B]"></i>Available</span>
               <span className="flex items-center gap-1.5"><i className="w-3 h-3 rounded-full bg-[#D04A4A]"></i>Occupied</span>
@@ -757,13 +804,13 @@ function ClientView({ s, a, say }) {
               <div className="grid sm:grid-cols-2 gap-3 mt-5">
                 <div className=${"rounded-2xl p-4 border " + (!s.isMember ? "border-[#0E2240]/25" : "border-[#0E2240]/10 opacity-60")}>
                   <p className="text-xs font-bold text-[#0E2240]/60">Day Pass · Non-Member</p>
-                  <p className="font-lux text-4xl text-[#0E2240] tabnum mt-1">${eur(s.seatPrice)}<span className="text-base font-sans text-[#0E2240]/50"> / seat</span></p>
-                  <p className="text-xs text-[#0E2240]/55 mt-1">Includes +40% non-member surcharge</p>
+                  <p key=${"d" + dep.id + dayPrice} className="rise font-lux text-4xl text-[#0E2240] tabnum mt-1">${eur(dayPrice)}<span className="text-base font-sans text-[#0E2240]/50"> / seat</span></p>
+                  <p className="text-xs text-[#0E2240]/55 mt-1">Includes +40% non-member surcharge${s.priceBoost ? ` · ${s.priceBoost > 0 ? "+" : ""}${s.priceBoost}% high-demand pricing` : ""}</p>
                 </div>
                 <div className="relative rounded-2xl p-4 bg-[#0E2240] text-[#F8F6F1] ring-2 ring-[#C8A45D]">
-                  <span className="absolute -top-2.5 right-3 rounded-full bg-[#C8A45D] text-[#0E2240] text-[10px] font-extrabold px-2.5 py-1 tabnum">YOU SAVE ${eur(s.seatPrice - MEMBER_PRICE)} / SEAT</span>
+                  <span className="absolute -top-2.5 right-3 rounded-full bg-[#C8A45D] text-[#0E2240] text-[10px] font-extrabold px-2.5 py-1 tabnum">YOU SAVE ${eur(dayPrice - memberPrice)} / SEAT</span>
                   <p className="text-xs font-bold text-[#F8F6F1]/70">VIP Member Rate</p>
-                  <p className="font-lux text-4xl tabnum mt-1">${eur(MEMBER_PRICE)}<span className="text-base font-sans text-[#F8F6F1]/50"> / seat</span></p>
+                  <p key=${"m" + dep.id} className="rise font-lux text-4xl tabnum mt-1">${eur(memberPrice)}<span className="text-base font-sans text-[#F8F6F1]/50"> / seat</span></p>
                   <p className="text-xs text-[#F8F6F1]/60 mt-1">0% surcharge, for you and your guests</p>
                 </div>
               </div>
@@ -780,7 +827,7 @@ function ClientView({ s, a, say }) {
                   <div>
                     <p className="text-xs text-[#0E2240]/60 tabnum">${selected.length} × ${eur(unit)} ${s.isMember ? "(member rate)" : "(day pass)"}</p>
                     <p className="font-lux text-4xl text-[#0E2240] tabnum">${eur(selected.length * unit)}</p>
-                    ${!s.isMember && html`<p className="text-xs text-[#2E9E6B] font-bold tabnum">As a member: ${eur(selected.length * MEMBER_PRICE)}</p>`}
+                    ${!s.isMember && html`<p className="text-xs text-[#2E9E6B] font-bold tabnum">As a member: ${eur(selected.length * memberPrice)}</p>`}
                   </div>
                   <button type="button" onClick=${() => { a.book(dep.id, selected, unit); setSelected([]); setFocus(null); }} className="rounded-xl bg-[#0E2240] hover:bg-[#2E9E6B] text-white font-bold px-6 py-3 transition">Reserve ${selected.length} seat${selected.length > 1 ? "s" : ""}</button>
                 </div>`}
@@ -828,11 +875,194 @@ function ClientView({ s, a, say }) {
           <div className="grid md:grid-cols-3 gap-5 mt-6">
             ${PHOTO_SLOTS.map((sl) => html`<${PhotoCard} key=${sl.id} slot=${sl} src=${photos[sl.id]} active=${activePhoto === sl.id} setActive=${setActivePhoto} onFile=${save} onReset=${reset} />`)}
           </div>
-          <p className="text-[11px] text-[#0E2240]/45 mt-3">*Top speed depends on the engine package. Confirm with the owner before publishing.</p>
+          <p className="text-[11px] text-[#0E2240]/45 mt-3">Specifications and photos from the WOTAN Fjord 38 Xpress brochure.</p>
         </section>
       </div>
       <${VipModal} open=${vip} onClose=${() => setVip(false)} isMember=${s.isMember} onJoin=${() => { a.join(); }} />
+      <${Concierge} s=${s} onVip=${() => setVip(true)} onPickDep=${(id) => { a.setDep(id); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
     </main>`;
+}
+
+/* ======================================================================
+   WOTAN AI CONCIERGE — local intent & keyword engine (no external API)
+   Knowledge base: WOTAN Fjord 38 Xpress brochure + club rules.
+   ====================================================================== */
+const CONCIERGE_CHIPS = [
+  "Can we book for 14 people to Mallorca?",
+  "Tell me about the Fjord 38 Xpress specs",
+  "Why is Tagomago Founders Run more expensive?",
+  "Can we sleep on board?"
+];
+const reducedMotion = () => { try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; } };
+
+function conciergeReply(q, s) {
+  const t = " " + norm(q).replace(/[?!.,;]/g, " ") + " ";
+  const hit = (arr) => arr.some((k) => t.includes(k));
+  const dep = s.departures.find((d) => d.id === s.depId);
+  const parts = [], actions = [];
+
+  // --- detect the group size ---
+  const info = detectPax(t);
+  let n = info ? info.n : null;
+  const bare = t.match(/\b(1[2-9]|[2-9]\d)\b(?!\s*(kn|knot|kts|h |hours|m |%|ltr|l |hp|eur|euro|€|nm))/);
+  if (bare && (n == null || n < +bare[1]) && hit(["people", "pax", "guest", "group", "friend", "person", "personas", "of us", "book for", "for ", "amigos"])) n = +bare[1];
+
+  const geo = OUT_ZONE.filter((k) => t.includes(" " + k) || t.includes(k + " "));
+  const night = hit(["sleep", "overnight", "night", "dormir", "noche", "hotel", "stay on board", "stay aboard", "cabins", "pernoct", " stay "]);
+  const capKw = hit(["big group", "more than 11", "capacity", "how many people", "how many guests", "max people", "maximum", "large group", "aforo", "people", "pax", "tandem"]);
+  const founders = hit(["founder", "tagomago", "networking", "expensive", "starlink", " vcs", " vc "]);
+  const pricing = founders || hit(["price", "cost", "how much", " vip", "member", "surcharge", " rates", " fee", "cheap", "discount", "€", "euro", " pay", "precio"]);
+  const specsStrong = hit(["spec", "engine", "speed", "size", "length", "music", "sound", "audio", "bathroom", "toilet", "cabin", " beam", "knots", " fast", "fuel", "mercury", "horsepower", " hp", "fridge"]);
+  const extras = hit(["seabob", "e-foil", "efoil", " foil", " toys", "paddle", "snorkel", "included", "include", "towel", "drinks"]);
+  const routes = hit(["route", "where do", "where can", "illetes", "vedra", "beach club", "itinerar", "destination", "juan y andrea", "beso", "cala "]);
+  const booking = hit(["available", "availability", "seats left", "this week", "free seat", "reserve", "which date", "when "]);
+  const hello = hit([" hi ", " hello", " hey ", " hola", "good morning", "good evening", "buenas"]);
+  const capFail = n != null && n > CAPACITY;
+  const specs = specsStrong || (!geo.length && !night && !capFail && !pricing && hit(["boat", "yacht", "fjord", "xpress", "wotan"]));
+
+  if (geo.length) {
+    const dest = geo.map(cap1).join(" and ");
+    parts.push(`That isn't possible because WOTAN runs 8-hour day charters strictly within Ibiza and Formentera. ${dest} is too far to sail there and back safely and still enjoy the day. I can offer you the Es Vedrà Sunset Session or a full day at Illetes in Formentera instead: turquoise water and beach clubs reached by our private tender.`);
+    const illetes = s.departures.find((d) => d.tier === "dayclub");
+    if (illetes) actions.push({ type: "dep", id: illetes.id, label: "See seats on " + illetes.name });
+  }
+  if (capFail) {
+    parts.push(`We'd love to host all ${n} of you, but maritime law caps the Fjord 38 Xpress at 11 guests plus the skipper, with no exceptions. That isn't possible on one boat, but I can offer you our 2-boat tandem: a second yacht sails alongside on the same route and timing, so your group anchors, swims and has lunch together all day. Our team closes tandem bookings on WhatsApp in a few minutes.`);
+    actions.push({ type: "whatsapp", label: "Continue on WhatsApp with our team", text: `Hi WOTAN team, we're a group of ${n} and would like a 2-boat tandem quote${geo.length ? " (Es Vedrà or Illetes instead of " + geo.map(cap1).join("/") + ")" : ""}.` });
+  } else if (capKw && !geo.length) {
+    const left = CAPACITY - dep.occupied.length;
+    parts.push(`Each departure takes up to 11 guests plus the skipper, by maritime law.${n ? ` A group of ${n} fits on one boat.` : ""} Right now ${dep.name} has ${left} seat${left === 1 ? "" : "s"} left. For groups of 12 or more we run a 2-boat tandem.`);
+  }
+  if (night) {
+    parts.push("Sleeping on board isn't possible: WOTAN is an 8-hour day charter between 10:30 and 20:30, and overnight stays are never allowed. The cabin with its full bathroom is there for changing and resting during the day. What I can offer you is a stay at one of our partner luxury villas in Cala Jondal or Es Cubells, with our tender picking you up from the villa the next morning.");
+  }
+  if (specs) {
+    parts.push("WOTAN is a 2020 Fjord 38 Xpress moored at Marina Port Ibiza: German build, Scandinavian design.\n– Length 11.63 m · beam 3.64 m\n– Twin 300 hp Mercury engines (600 hp combined)\n– Up to 40 knots, 26 knots cruising, about 120 L/h\n– Fusion zoned Bluetooth sound system\n– Retractable sun canopies at bow and stern, plus T-top shade at the helm\n– Bow sunbed, large aft sundeck with a convertible table for 8, 3 refrigerators, outdoor shower and swim platform\n– Cabin with a full bathroom\nCapacity: 11 guests plus the skipper.");
+  }
+  if (founders) {
+    const f = EVENT_TIERS.founders;
+    parts.push(`The Tagomago Founders Run is our high-ticket networking day: a private, curated mastermind at sea for tech founders, VCs and villa owners. It includes a networking lunch in Tagomago, a premium open bar and Starlink high-speed Wi-Fi on board. Guests are curated and 85% of seats are held by VIP Club members, which is why it's ${eur(f.member)} per seat for members and ${eur(f.day)} as a day pass.`);
+  }
+  if (pricing) {
+    if (!founders) {
+      const rows = Object.values(EVENT_TIERS).map((x) => `– ${x.label}: ${eur(x.member)} member · ${eur(x.day)} day pass`).join("\n");
+      parts.push(`Seat prices depend on the event:\n${rows}\nDay passes include the 40% non-member surcharge.`);
+    }
+    parts.push(`The VIP Membership is ${eur(MEMBERSHIP_FEE)} per season. You and your guests skip the surcharge (€80–€140 saved per seat), get a complimentary tender pickup from your villa and a welcome bottle on every trip, plus 7-day priority on the Founders Run. With 4 seats per outing it pays for itself after 4–5 outings.`);
+    actions.push({ type: "vip", label: "See what the VIP Membership includes" });
+  }
+  if (extras) {
+    parts.push("Included on every trip: towels, snorkel gear, paddle surf, complimentary drinks, port taxes, insurance and final cleaning.\nExtras on request: Seabob €320/day, E-foil €500/day and premium drinks.");
+  }
+  if (routes && !geo.length) {
+    parts.push("Favourite routes from Marina Port Ibiza:\n– Formentera · Illetes: Juan y Andrea, Beso, Es Ministre\n– Formentera · Levante and Es Pujols\n– Ibiza South: Cala Jondal, Salinas, Cala Pluma\n– Ibiza South · Es Vedrà via Cala Jondal\n– Formentera · Cala Saona\nEvery route fits within our 8-hour day charter.");
+  }
+  if (!parts.length && booking) {
+    const rows = s.departures.map((d) => `– ${fmtDate(d.date)} · ${d.name}: ${CAPACITY - d.occupied.length} seats left · ${eur(d.member)} member / ${eur(dayPassOf(d, s.priceBoost))} day pass`).join("\n");
+    parts.push(`This week's departures:\n${rows}`);
+    actions.push({ type: "dep", id: dep.id, label: "Choose my seats" });
+  }
+  if (!parts.length && hello) parts.push("Hello, and welcome aboard. I can help with the Fjord 38 Xpress, this week's events and prices, the VIP Membership or group bookings. What would you like to know?");
+  if (!parts.length) parts.push("I can help with the Fjord 38 Xpress specs, event prices, the VIP Membership, routes and extras, or bookings for groups of any size. Try one of the questions below, or ask me in your own words.");
+  return { text: parts.join("\n\n"), actions };
+}
+
+function StreamText({ text, done, onTick }) {
+  const [n, setN] = useState(done ? text.length : 0);
+  useEffect(() => {
+    if (done || reducedMotion()) { setN(text.length); return; }
+    const step = Math.max(2, Math.ceil(text.length / 70));
+    const id = setInterval(() => setN((v) => { const nx = Math.min(text.length, v + step); if (nx >= text.length) clearInterval(id); return nx; }), 18);
+    return () => clearInterval(id);
+  }, [text]);
+  useEffect(() => { onTick && onTick(n >= text.length); }, [n]);
+  return html`<span>${text.slice(0, n)}</span>`;
+}
+
+function Concierge({ s, onVip, onPickDep }) {
+  const [open, setOpen] = useState(false);
+  const [msgs, setMsgs] = useState([{ id: 0, from: "bot", text: "Hi, I'm WOTAN, the AI concierge of the Vesorax Public Yacht Club. Ask me about the Fjord 38 Xpress, this week's events and prices, the VIP Membership or group bookings.", actions: [], done: true }]);
+  const [typing, setTyping] = useState(false);
+  const [input, setInput] = useState("");
+  const listRef = useRef(null), inputRef = useRef(null), timer = useRef(null);
+  const busy = typing || msgs.some((m) => !m.done);
+
+  const scroll = () => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; };
+  useEffect(scroll, [msgs, typing, open]);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", h);
+    setTimeout(() => inputRef.current && inputRef.current.focus(), 50);
+    return () => window.removeEventListener("keydown", h);
+  }, [open]);
+
+  const send = (raw) => {
+    const q = (raw || "").trim();
+    if (!q || busy) return;
+    setInput("");
+    const r = conciergeReply(q, s);
+    setMsgs((m) => [...m, { id: Date.now(), from: "user", text: q, actions: [], done: true }]);
+    setTyping(true);
+    const delay = reducedMotion() ? 120 : 650 + Math.min(r.text.length * 2, 900);
+    timer.current = setTimeout(() => {
+      setTyping(false);
+      setMsgs((m) => [...m, { id: Date.now() + 1, from: "bot", text: r.text, actions: r.actions, done: false }]);
+    }, delay);
+  };
+  const finish = (id) => setMsgs((m) => m.map((x) => (x.id === id && !x.done ? { ...x, done: true } : x)));
+
+  const act = (a) => {
+    if (a.type === "vip") onVip();
+    if (a.type === "dep") { onPickDep(a.id); setOpen(false); }
+  };
+
+  return html`
+    ${!open && html`<button type="button" onClick=${() => setOpen(true)} aria-label="Open WOTAN AI Concierge"
+      className="fixed z-40 inline-flex items-center gap-2.5 rounded-full bg-[#0E2240] text-[#F8F6F1] pl-3 pr-4 py-3 shadow-[0_16px_40px_-12px_rgba(14,34,64,.6)] ring-1 ring-[#C8A45D]/50 hover:bg-[#16325C] transition"
+      style=${{ right: "max(20px, env(safe-area-inset-right, 0px))", bottom: "calc(20px + env(safe-area-inset-bottom, 0px))" }}>
+      <span className="relative grid place-items-center w-8 h-8 rounded-full bg-[#C8A45D]/15">
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" fill="none" stroke="#C8A45D" strokeWidth="1.4" strokeLinejoin="round"/></svg>
+        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#2E9E6B] ring-2 ring-[#0E2240]"></span>
+      </span>
+      <span className="text-sm font-bold tracking-wide">WOTAN AI Concierge</span>
+    </button>`}
+    ${open && html`<div role="dialog" aria-label="WOTAN AI Concierge"
+      className="slidein fixed z-40 flex flex-col overflow-hidden rounded-3xl bg-white shadow-[0_30px_80px_-20px_rgba(14,34,64,.55)] ring-1 ring-[#0E2240]/10 w-[min(400px,calc(100vw-24px))] h-[min(620px,calc(100vh-120px))]"
+      style=${{ right: "max(12px, env(safe-area-inset-right, 0px))", bottom: "calc(12px + env(safe-area-inset-bottom, 0px))" }}>
+      <div className="bg-[#0E2240] text-[#F8F6F1] px-4 py-3.5 flex items-center gap-3">
+        <span className="grid place-items-center w-9 h-9 rounded-full bg-[#C8A45D] text-[#0E2240] font-lux text-lg font-bold">W</span>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold leading-tight">WOTAN AI Concierge</p>
+          <p className="text-[11px] text-[#F8F6F1]/60 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-[#2E9E6B]"></span>Online · Fjord 38 Xpress · Marina Port Ibiza</p>
+        </div>
+        <button type="button" onClick=${() => setOpen(false)} aria-label="Close chat" className="w-8 h-8 rounded-full hover:bg-white/10 text-xl leading-none">×</button>
+      </div>
+      <div ref=${listRef} className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3 bg-[#F8F6F1]" aria-live="polite">
+        ${msgs.map((m) => html`<div key=${m.id} className=${"flex " + (m.from === "user" ? "justify-end" : "justify-start")}>
+          <div className=${"max-w-[86%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed whitespace-pre-wrap " + (m.from === "user" ? "bg-[#0E2240] text-[#F8F6F1] rounded-br-md" : "bg-white text-[#0E2240] ring-1 ring-[#0E2240]/10 rounded-bl-md")}>
+            ${m.from === "bot" ? html`<${StreamText} text=${m.text} done=${m.done} onTick=${(end) => { scroll(); if (end) finish(m.id); }} />` : m.text}
+            ${m.done && m.actions.length > 0 && html`<div className="flex flex-col gap-1.5 mt-3">${m.actions.map((a, i) => a.type === "whatsapp"
+              ? html`<a key=${i} href=${"https://wa.me/?text=" + encodeURIComponent(a.text)} target="_blank" rel="noopener" className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#2E9E6B] text-white text-[13px] font-bold px-3 py-2 hover:brightness-110"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8a6.2 6.2 0 00-5.3 9.4L1.8 14.2l3.1-.9A6.2 6.2 0 108 1.8z" fill="none" stroke="currentColor" strokeWidth="1.3"/></svg>${a.label}</a>`
+              : html`<button key=${i} type="button" onClick=${() => act(a)} className="rounded-xl border border-[#C8A45D] text-[#0E2240] text-[13px] font-bold px-3 py-2 hover:bg-[#C8A45D]/15">${a.label}</button>`)}</div>`}
+          </div></div>`)}
+        ${typing && html`<div className="flex justify-start"><div className="rounded-2xl rounded-bl-md bg-white ring-1 ring-[#0E2240]/10 px-4 py-3 flex gap-1.5" aria-label="WOTAN is typing">
+          ${[0, 1, 2].map((i) => html`<span key=${i} className="w-1.5 h-1.5 rounded-full bg-[#0E2240]/45 animate-bounce" style=${{ animationDelay: i * 0.15 + "s" }}></span>`)}</div></div>`}
+      </div>
+      <div className="border-t border-[#0E2240]/10 bg-white">
+        <div className="flex gap-2 overflow-x-auto px-3 pt-3 pb-1" aria-label="Suggested questions">
+          ${CONCIERGE_CHIPS.map((c) => html`<button key=${c} type="button" disabled=${busy} onClick=${() => send(c)} className="shrink-0 rounded-full border border-[#0E2240]/15 px-3 py-1.5 text-xs font-semibold text-[#0E2240] hover:border-[#C8A45D] disabled:opacity-50">${c}</button>`)}
+        </div>
+        <form className="flex gap-2 p-3" onSubmit=${(e) => { e.preventDefault(); send(input); }}>
+          <label htmlFor="concierge-input" className="sr-only">Ask WOTAN</label>
+          <input id="concierge-input" ref=${inputRef} value=${input} onInput=${(e) => setInput(e.target.value)} placeholder="Ask about prices, groups, the boat…" autoComplete="off"
+            className="flex-1 min-w-0 rounded-xl bg-[#F8F6F1] border border-[#0E2240]/15 px-3 py-2.5 text-sm text-[#0E2240] placeholder-[#0E2240]/40" />
+          <button type="submit" disabled=${busy || !input.trim()} aria-label="Send" className="rounded-xl bg-[#0E2240] text-[#F8F6F1] px-3.5 disabled:opacity-40 hover:bg-[#16325C]">
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
+        </form>
+      </div>
+    </div>`}`;
 }
 
 /* ======================================================================
@@ -853,7 +1083,7 @@ function Spark({ data, color = "#8B93FF" }) {
   </svg>`;
 }
 
-function pricingAdvice(departures, seatPrice) {
+function pricingAdvice(departures, boost) {
   const occ = departures.map((d) => ({ d, o: d.occupied.length / CAPACITY })).sort((x, y) => y.o - x.o);
   const top = occ.slice(0, 3), hot = top.reduce((x, y) => x + y.o, 0) / top.length;
   const avg = occ.reduce((x, y) => x + y.o, 0) / occ.length;
@@ -862,15 +1092,16 @@ function pricingAdvice(departures, seatPrice) {
   else if (hot >= 0.6) { pct = 10; why = `steady demand at ${Math.round(hot * 100)}% on the busiest days`; }
   else if (avg <= 0.4) { pct = -15; why = `low occupancy (${Math.round(avg * 100)}%): run a 48 h flash offer`; }
   else why = "demand is balanced, hold the price";
-  return { pct, why, avg, target: Math.round((DAY_PASS * (1 + pct / 100)) / 5) * 5, applied: seatPrice !== DAY_PASS };
+  const ex = top[0].d;
+  return { pct, why, avg, ex, from: dayPassOf(ex, 0), to: dayPassOf(ex, pct), applied: boost !== 0 };
 }
 
 function BISidebar({ s, a }) {
-  const advice = pricingAdvice(s.departures, s.seatPrice);
+  const advice = pricingAdvice(s.departures, s.priceBoost);
   const mrr = (s.members * MEMBERSHIP_FEE) / SEASON_MONTHS;
   const prev = s.mrrHistory[s.mrrHistory.length - 2];
   return html`
-    <aside className="flex flex-col gap-3 lg:sticky lg:top-28" aria-label="Business Intelligence">
+    <aside className="flex flex-col gap-3 lg:sticky lg:top-36" aria-label="Business Intelligence">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-white">Business Intelligence</h2>
         <span className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>LIVE</span>
@@ -889,9 +1120,9 @@ function BISidebar({ s, a }) {
       <div className="rounded-xl p-4 border border-amber-400/30 bg-gradient-to-br from-amber-400/[.08] to-transparent">
         <p className="text-[11px] font-mono uppercase tracking-[.14em] text-amber-300">AI dynamic pricing</p>
         <p className="text-white font-medium mt-2 text-[15px] leading-snug">${advice.pct > 0 ? `Suggestion: Increase price by ${advice.pct}% due to ${advice.why}.` : advice.pct < 0 ? `Suggestion: Decrease price by ${-advice.pct}% due to ${advice.why}.` : `Suggestion: Keep price, ${advice.why}.`}</p>
-        <p className="text-xs text-[#8A90A0] mt-2">Day pass ${eur(DAY_PASS)} → <b className="text-white">${eur(advice.target)}</b>. Member rate stays ${eur(MEMBER_PRICE)} to widen the anchor.</p>
-        ${advice.pct !== 0 && html`<button type="button" onClick=${() => a.setPrice(advice.applied ? DAY_PASS : advice.target)}
-          className=${"mt-3 w-full rounded-lg text-sm font-semibold py-2 transition " + (advice.applied ? "border border-[#2A2E3A] text-[#C9CDD8] hover:border-white" : "bg-amber-400 text-[#0A0B0F] hover:bg-amber-300")}>${advice.applied ? `Applied (${eur(s.seatPrice)}) · Undo` : "Apply to Client Mode"}</button>`}
+        <p className="text-xs text-[#8A90A0] mt-2">Applies to non-member day passes on every event, e.g. ${advice.ex.short} ${eur(advice.from)} → <b className="text-white">${eur(advice.to)}</b>. Member rates stay fixed to widen the anchor.</p>
+        ${advice.pct !== 0 && html`<button type="button" onClick=${() => a.setBoost(advice.applied ? 0 : advice.pct)}
+          className=${"mt-3 w-full rounded-lg text-sm font-semibold py-2 transition " + (advice.applied ? "border border-[#2A2E3A] text-[#C9CDD8] hover:border-white" : "bg-amber-400 text-[#0A0B0F] hover:bg-amber-300")}>${advice.applied ? `Applied (${s.priceBoost > 0 ? "+" : ""}${s.priceBoost}%) · Undo` : "Apply to Client Mode"}</button>`}
       </div>
       <div className=${card + " p-4"}>
         <p className=${kicker + " mb-2"}>Activity</p>
@@ -910,7 +1141,7 @@ function LeadAnalyzer({ s, a }) {
   const [saved, setSaved] = useState(false);
   const ctl = useRef(null);
   const samples = [
-    "Hola! Somos 14 amigos y queremos ir de Ibiza a Mallorca el sábado, y si se puede dormir en el barco mejor 😍",
+    "Hola! Somos 14 amigos y queremos ir de Ibiza a Mallorca el sábado, y si se puede dormir en el barco mejor",
     "Hi, I'm staying at a villa in Cala Jondal all of July with my wife and our 2 kids. I run a tech company and we'd like to go out several times.",
     "Hello! Are there 2 seats left for the Formentera trip on Friday? How much per person?",
     "We are 15 for a stag do, can we all fit on one boat? And can you do a discount?"
@@ -962,7 +1193,7 @@ function LeadAnalyzer({ s, a }) {
             <p className=${kicker}>Profile classification</p>
             <div className="flex flex-wrap items-center gap-2 mt-3">
               <span className=${"rounded-md px-2.5 py-1 font-semibold ring-1 " + LEAD_PROFILES[res.profile].cls}>${LEAD_PROFILES[res.profile].label}</span>
-              <span className=${"rounded-md px-2 py-1 text-xs font-mono ring-1 " + TIERS[tier].cls}>${TIERS[tier].icon} Score ${res.score}</span>
+              <span className=${"inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-mono ring-1 " + TIERS[tier].cls}><${TierDot} t=${tier} />Score ${res.score}</span>
             </div>
             <p className="text-sm text-[#C9CDD8] mt-3">${res.summary}</p>
             <div className="mt-4 flex items-end gap-3">
@@ -1025,7 +1256,7 @@ function CDP({ clients, openId, setOpenId }) {
   const counts = { all: clients.length, whale: 0, mid: 0, low: 0 };
   clients.forEach((c) => counts[tierOf(c.score)]++);
   const list = clients.filter((c) => tab === "all" || tierOf(c.score) === tab).sort((x, y) => y.score - x.score);
-  const tabs = [["all", "All clients", ""], ["whale", TIERS.whale.label, TIERS.whale.icon], ["mid", TIERS.mid.label, TIERS.mid.icon], ["low", TIERS.low.label, TIERS.low.icon]];
+  const tabs = [["all", "All clients"], ["whale", TIERS.whale.label], ["mid", TIERS.mid.label], ["low", TIERS.low.label]];
   const totalLtv = clients.reduce((x, c) => x + ltvOf(c), 0);
   return html`
     <div className="flex flex-col gap-4">
@@ -1034,9 +1265,9 @@ function CDP({ clients, openId, setOpenId }) {
           <div key=${k} className=${card + " p-4"}><p className=${kicker}>${k}</p><p className="text-2xl font-semibold text-white tabnum mt-1">${v}</p></div>`)}
       </div>
       <div className="flex gap-1 p-1 rounded-lg bg-[#111318] border border-[#1F222B] overflow-x-auto" role="tablist" aria-label="Client tiers">
-        ${tabs.map(([id, label, icon]) => html`<button key=${id} type="button" role="tab" aria-selected=${tab === id} onClick=${() => setTab(id)}
+        ${tabs.map(([id, label]) => html`<button key=${id} type="button" role="tab" aria-selected=${tab === id} onClick=${() => setTab(id)}
           className=${"shrink-0 rounded-md px-3 py-2 text-sm font-medium transition flex items-center gap-2 " + (tab === id ? "bg-[#1C1F28] text-white shadow-[inset_0_0_0_1px_#2A2E3A]" : "text-[#8A90A0] hover:text-white")}>
-          ${icon && html`<span aria-hidden="true">${icon}</span>`}<span>${label}</span>${id !== "all" && html`<span className="text-[11px] font-mono text-[#5C6170]">${TIERS[id].range}</span>`}
+          ${id !== "all" && html`<${TierDot} t=${id} />`}<span>${label}</span>${id !== "all" && html`<span className="text-[11px] font-mono text-[#5C6170]">${TIERS[id].range}</span>`}
           <span className="rounded bg-[#0A0B0F] px-1.5 text-[11px] font-mono text-[#8A90A0] tabnum">${counts[id]}</span></button>`)}
       </div>
       <ul className=${card + " divide-y divide-[#1F222B] overflow-hidden"}>
@@ -1049,13 +1280,34 @@ function CDP({ clients, openId, setOpenId }) {
                 <div className="text-xs text-[#8A90A0] truncate">${c.profession} · ${c.origin}</div>
               </div>
               <div className="hidden sm:block min-w-0 text-xs text-[#8A90A0]"><div className="truncate">${last ? fmtISO(last.date) + " · " + last.desc : "—"}</div><div className="truncate text-[#5C6170]">${c.partner ? "via " + c.partner.name : c.channel}</div></div>
-              <span className=${"hidden sm:inline rounded px-2 py-0.5 text-[11px] font-medium ring-1 whitespace-nowrap " + TIERS[t].cls}>${TIERS[t].icon} ${t === "whale" ? "Whale" : t === "mid" ? "Mid-tier" : "Low"}</span>
+              <span className=${"hidden sm:inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] font-medium ring-1 whitespace-nowrap " + TIERS[t].cls}><${TierDot} t=${t} />${t === "whale" ? "Whale" : t === "mid" ? "Mid-tier" : "Low"}</span>
               <div className="text-right"><div className="text-sm font-semibold text-white tabnum">${eur(ltvOf(c))}</div><div className="text-[11px] text-[#5C6170]">LTV</div></div>
             </button>
           </li>`; })}
         ${list.length === 0 && html`<li className="p-6 text-sm text-[#8A90A0]">No clients in this tier yet.</li>`}
       </ul>
     </div>`;
+}
+
+function trustBadges(c) {
+  const booked = c.history.some((h) => h.amount > 0);
+  return [
+    { label: booked ? "KYC Verified" : "KYC Pending", icon: "shield", on: booked },
+    { label: "Stripe VIP", icon: "card", on: c.member || tierOf(c.score) === "whale" },
+    { label: "Villa Partner Referral", icon: "home", on: !!c.partner }
+  ].filter((b) => b.on || b.icon === "shield");
+}
+function payLinkFor(c) {
+  if (c.member) return "€350 · Tagomago Founders Run seat";
+  if (c.nba.kind === "tandem") return "€2,940 · 2-boat tandem deposit (50%)";
+  if (c.nba.kind === "nurture") return "€270 · Relax & Couples day pass";
+  return "€2,900 · VIP Membership 2027 season";
+}
+function BadgeIcon({ kind, on }) {
+  const col = on ? "#34D399" : "#5C6170";
+  if (kind === "shield") return html`<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l5 2v4c0 3.2-2.2 5.6-5 7-2.8-1.4-5-3.8-5-7v-4z" fill="none" stroke=${col} strokeWidth="1.4"/>${on && html`<path d="M5.5 8l1.8 1.8L10.8 6" fill="none" stroke=${col} strokeWidth="1.4" strokeLinecap="round"/>`}</svg>`;
+  if (kind === "card") return html`<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke="#8B93FF" strokeWidth="1.4"/><path d="M1.5 6.5h13" stroke="#8B93FF" strokeWidth="1.4"/></svg>`;
+  return html`<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 7.5L8 2.5l6 5V14H2z" fill="none" stroke="#FBBF24" strokeWidth="1.4" strokeLinejoin="round"/></svg>`;
 }
 
 function ClientDrawer({ c, onClose, say }) {
@@ -1074,10 +1326,22 @@ function ClientDrawer({ c, onClose, say }) {
         <div className="sticky top-0 z-10 bg-[#0D0F14]/95 backdrop-blur border-b border-[#1F222B] px-5 py-4 flex items-center gap-3">
           <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#8B93FF] to-[#4B52B8] grid place-items-center font-semibold text-white">${c.initials}</div>
           <div className="min-w-0 flex-1"><p className="font-semibold text-white truncate">${c.name}</p><p className="text-xs text-[#8A90A0] truncate">${c.origin}${c.age ? " · " + c.age : ""}</p></div>
-          <span className=${"rounded px-2 py-0.5 text-[11px] font-medium ring-1 " + TIERS[t].cls}>${TIERS[t].icon} ${c.score}</span>
+          <span className=${"inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] font-medium ring-1 " + TIERS[t].cls}><${TierDot} t=${t} />${c.score}</span>
           <button type="button" onClick=${onClose} aria-label="Close" className="w-8 h-8 rounded-md hover:bg-white/10 text-[#8A90A0] text-xl leading-none">×</button>
         </div>
         <div className="p-5 flex flex-col gap-4">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap gap-1.5">
+              ${trustBadges(c).map((bd) => html`<span key=${bd.label} className=${"inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium " + (bd.on ? "border-[#2A2E3A] bg-[#111318] text-[#C9CDD8]" : "border-dashed border-[#2A2E3A] text-[#5C6170]")}>
+                <${BadgeIcon} kind=${bd.icon} on=${bd.on} />${bd.label}</span>`)}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick=${() => say(`Stripe payment link sent to ${c.name.split(" ")[0]} · ${payLinkFor(c)}`)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-white text-[#0A0B0F] text-sm font-semibold px-3 py-2 hover:bg-[#E6E8EE]">
+                <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4"/><path d="M1.5 6.5h13" stroke="currentColor" strokeWidth="1.4"/></svg>Send Stripe Payment Link</button>
+              <button type="button" onClick=${() => say(`Client dossier exported · ${c.name.replace(/[^A-Za-z]+/g, "_")}_WOTAN_360.pdf`)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#2A2E3A] text-[#E6E8EE] text-sm font-semibold px-3 py-2 hover:border-[#8B93FF]">
+                <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0l-3-3m3 3l3-3M3 13.5h10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>Export Client PDF Dossier</button>
+            </div>
+          </div>
           <section className="rounded-xl border border-[#8B93FF]/40 bg-gradient-to-br from-[#8B93FF]/[.12] to-transparent p-4">
             <div className="flex items-center justify-between gap-2"><p className="text-[11px] font-mono uppercase tracking-[.14em] text-[#A6ACFF]">AI Next Best Action · WOTAN</p><span className="text-xs font-mono text-[#A6ACFF] tabnum">${c.nba.prob}%</span></div>
             <p className="font-semibold text-white mt-2">${c.nba.title}</p>
@@ -1132,7 +1396,7 @@ function ClientDrawer({ c, onClose, say }) {
 function InvestmentClub() {
   const [boats, setBoats] = useState(1);
   const [occ, setOcc] = useState(82);
-  const [members, setMembers] = useState(40);
+  const [members, setMembers] = useState(25);
   const r = simulate(boats, occ / 100, members);
   const series = Array.from({ length: 10 }, (_, i) => simulate(i + 1, occ / 100, members));
   const maxV = Math.max(...series.map((x) => x.ebitda), 1), minV = Math.min(0, ...series.map((x) => x.trad.ebitda));
@@ -1183,7 +1447,7 @@ function InvestmentClub() {
         <ul className="mt-3 grid sm:grid-cols-2 gap-x-6 gap-y-1.5 list-disc pl-4">
           <li><b className="text-[#C9CDD8]">From the growth audit PDF:</b> ${SELLABLE_DAYS} sellable days (May–Oct), private day rate €1,500–2,000 (model: ${eur(MODEL.tradDayRate)}), marketplace commission 23–26% (model: 25% on 60% of bookings).</li>
           <li>Traditional occupancy ${Math.round(MODEL.tradOcc * 100)}% of days; Yacht Club occupancy is seat-based.</li>
-          <li>Seat mix: ${Math.round(MODEL.memberSeatShare * 100)}% member seats at ${eur(MEMBER_PRICE)}, the rest at ${eur(DAY_PASS)}; extras ${eur(MODEL.extrasPerSeat)} per seat.</li>
+          <li>Seat mix: ${Math.round(MODEL.memberSeatShare * 100)}% member seats at an average ${eur(MEMBER_AVG)}, the rest at an average day pass of ${eur(DAY_AVG)} (this week's event mix); extras ${eur(MODEL.extrasPerSeat)} per seat.</li>
           <li>Costs per boat: skipper, fuel and cleaning ${eur(MODEL.opCostPerDay)}/day; mooring, insurance and maintenance ${eurK(MODEL.fixedPerBoat)}/season; F&B ${eur(MODEL.fbPerSeat)}/seat; acquisition 10% of seat revenue.</li>
           <li>Club HQ (team + WOTAN software): ${eurK(MODEL.hqBase)} + ${eurK(MODEL.hqPerBoat)} per boat. EBITDA excludes boat depreciation and financing.</li>
           <li>All figures except the PDF inputs are simulation assumptions, not WOTAN actuals.</li>
@@ -1229,7 +1493,7 @@ const MOCK_LEADS = [
   { id: 2, channel: "WhatsApp", who: "Kevin D.", time: "09:40", text: "We are 15 for a stag do, all on one boat? Discount?", profile: "seat", pax: 15, alerts: 1 },
   { id: 1, channel: "Villa partner", who: "Alexander B.", time: "09:12", text: "Staying at our villa in Cala Jondal all August, 4 seats again with the Seabob.", profile: "vip", pax: 4, alerts: 0 }
 ];
-const MRR_HISTORY = [4200, 4600, 5000, 5400, 5800, 6200, 6600, 7000, 7400, 7800, 8200, 8400];
+const MRR_HISTORY = [10150, 11120, 12080, 13050, 14020, 14980, 15950, 16920, 17880, 18850, 19820, 20300];
 const ACTIVITY_POOL = [
   "New lead from Instagram · VIP signals detected",
   "Seat booked on Illetes Day Club",
@@ -1243,7 +1507,7 @@ const ACTIVITY_POOL = [
 function App() {
   const [mode, setMode] = useState("biz");
   const [s, setS] = useState({
-    departures: INITIAL_DEPARTURES, depId: "d1", viewers: 5, seatPrice: DAY_PASS,
+    departures: INITIAL_DEPARTURES, depId: "d1", viewers: 5, priceBoost: 0,
     members: 42, isMember: false, mrrHistory: MRR_HISTORY, leadsProcessed: 128, revenueToday: 2240,
     leads: MOCK_LEADS, clients: CLIENTS,
     activity: [{ id: 1, t: "11:02", m: "Lead from Instagram · Seat profile" }, { id: 2, t: "10:48", m: "Seat booked on Illetes Day Club" }, { id: 3, t: "10:31", m: "Lead asked for Mallorca → rerouted" }]
@@ -1269,8 +1533,8 @@ function App() {
   const pushMrr = (x, members) => ({ members, mrrHistory: [...x.mrrHistory.slice(1), (members * MEMBERSHIP_FEE) / SEASON_MONTHS] });
   const actions = {
     setDep: (id) => up(() => ({ depId: id, viewers: 5 })),
-    setPrice: (p) => { up((x) => ({ seatPrice: p, activity: log(x, `Day pass set to ${eur(p)} by dynamic pricing`) })); say(`Client Mode day pass is now ${eur(p)}`); },
-    join: () => { up((x) => (x.isMember ? {} : { isMember: true, ...pushMrr(x, x.members + 1), activity: log(x, `New VIP member · +${eur(MEMBERSHIP_FEE)} season fee`) })); say(`Welcome to the club. Every seat is now ${eur(MEMBER_PRICE)}.`); },
+    setBoost: (p) => { up((x) => ({ priceBoost: p, activity: log(x, p ? `Day passes ${p > 0 ? "+" : ""}${p}% by dynamic pricing` : "Day passes back to list price") })); say(p ? `Client Mode day passes are now ${p > 0 ? "+" : ""}${p}%` : "Client Mode day passes are back to list price"); },
+    join: () => { up((x) => (x.isMember ? {} : { isMember: true, ...pushMrr(x, x.members + 1), activity: log(x, `New VIP member · +${eur(MEMBERSHIP_FEE)} season fee`) })); say("Welcome to the club. Member rates are now active on every event."); },
     book: (depId, seats, unit) => {
       up((x) => ({
         departures: x.departures.map((d) => (d.id === depId ? { ...d, occupied: [...d.occupied, ...seats.map((seat) => ({ seat, p: "couples" }))] } : d)),
