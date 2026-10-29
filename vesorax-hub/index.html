@@ -1,0 +1,1311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+<title>Vesorax Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,500;6..96,700&family=Manrope:wght@400;500;600;700;800&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  /* Two fixed worlds. Business: dark executive console (Linear/Stripe). Client: Mediterranean luxury (off-white, deep navy, soft gold). */
+  :root {
+    --sand: #F8F6F1; --navy: #0E2240; --gold: #C8A45D; --gold-soft: #EADBB8; --sea: #2D6E8E;
+    --free: #2E9E6B; --taken: #D04A4A;
+    --ink: #0A0B0F; --panel: #111318; --line: #1F222B; --text: #E6E8EE; --dim: #8A90A0; --violet: #8B93FF;
+    color-scheme: light;
+  }
+  body { margin: 0; font-family: Manrope, "Segoe UI", system-ui, sans-serif; background: var(--sand); color: var(--navy); }
+  body.biz { background: var(--ink); color: var(--text); font-family: Geist, Manrope, "Segoe UI", system-ui, sans-serif; }
+  .font-lux { font-family: "Bodoni Moda", "Didot", Georgia, serif; }
+  .font-mono { font-family: "Geist Mono", ui-monospace, Menlo, monospace; }
+  .tabnum { font-variant-numeric: tabular-nums; }
+  button:focus-visible, textarea:focus-visible, input:focus-visible, [tabindex]:focus-visible, g[role=button]:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  body.biz button:focus-visible, body.biz textarea:focus-visible, body.biz input:focus-visible { outline-color: var(--violet); }
+  input[type=range] { accent-color: var(--gold); }
+  body.biz input[type=range] { accent-color: var(--violet); }
+  @keyframes rise { from { opacity: .5; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .rise { animation: rise .3s ease-out; }
+  @keyframes slidein { from { transform: translateX(24px); opacity: .6; } to { transform: none; opacity: 1; } }
+  .slidein { animation: slidein .25s ease-out; }
+  .seat { cursor: pointer; transition: transform .15s; transform-box: fill-box; transform-origin: center; }
+  .seat:hover { transform: scale(1.08); }
+  .seat.taken { cursor: not-allowed; }
+  .seat.taken:hover { transform: none; }
+  .seat:focus { outline: none; }
+  .seat:focus-visible circle:last-of-type { stroke: #C8A45D; stroke-width: 4; }
+  .noscroll { overflow: hidden; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
+
+<div id="root"></div>
+
+<script>
+(() => {
+const { useState, useEffect, useMemo, useRef, useCallback } = React;
+const html = htm.bind(React.createElement);
+
+/* ======================================================================
+   CORE BUSINESS CONSTANTS (WOTAN · 2020 Fjord 38 Xpress · Marina Port Ibiza)
+   ====================================================================== */
+const CAPACITY = 11;
+const MEMBER_PRICE = 200;                 // VIP rate per seat, 0% surcharge
+const SURCHARGE = 0.40;                   // non-member surcharge
+const DAY_PASS = Math.round(MEMBER_PRICE * (1 + SURCHARGE)); // 280
+const MEMBERSHIP_FEE = 1200;              // € per season
+const SEASON_MONTHS = 6;                  // May – October
+const SELLABLE_DAYS = 184;                // from the growth audit PDF
+const BREAK_EVEN_SEATS = Math.ceil(MEMBERSHIP_FEE / (DAY_PASS - MEMBER_PRICE)); // 15
+
+const eur = (n) => (n < 0 ? "−€" : "€") + Math.abs(Math.round(n)).toLocaleString("en-US");
+const eurK = (n) => Math.abs(n) >= 1e6 ? (n < 0 ? "−" : "") + "€" + (Math.abs(n) / 1e6).toFixed(2) + "M" : (n < 0 ? "−" : "") + "€" + Math.round(Math.abs(n) / 1000) + "k";
+const day = (o) => { const d = new Date(); d.setDate(d.getDate() + o); return d; };
+const fmtDate = (d) => d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+const fmtISO = (s) => new Date(s + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+const nowHM = () => new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+/* ======================================================================
+   B2C MOCK DATA — departures this week with passenger vibe composition
+   ====================================================================== */
+const ZONES = [
+  { id: "bow", name: "Bow Sunbed", seats: [0, 1, 2] },
+  { id: "lounge", name: "Captain's Lounge", seats: [3, 4, 5, 6, 7] },
+  { id: "stern", name: "Stern Sunpad", seats: [8, 9, 10] }
+];
+const zoneOf = (i) => ZONES.find((z) => z.seats.includes(i));
+
+const PROFILES_B2C = [
+  { id: "couples", label: "Sunset & Chill Couples", noun: "couples" },
+  { id: "founders", label: "Networking & Founders", noun: "founders & executives" },
+  { id: "party", label: "Day Party & DJ", noun: "day-party guests" }
+];
+
+const mk = (arr) => arr.map(([seat, p]) => ({ seat, p }));
+const INITIAL_DEPARTURES = [
+  { id: "d1", offset: 1, short: "Es Vedrà", name: "Es Vedrà Sunset Session", route: "Marina Port Ibiza → Es Vedrà → Cala d'Hort", time: "12:00 – 20:00",
+    occupied: mk([[0, "couples"], [1, "couples"], [3, "couples"], [4, "couples"], [5, "founders"], [7, "couples"], [8, "couples"], [9, "founders"]]), affinity: { couples: 94, founders: 52, party: 18 } },
+  { id: "d2", offset: 2, short: "Illetes", name: "Illetes Day Club", route: "Marina Port Ibiza → Illetes, Formentera", time: "10:00 – 18:00",
+    occupied: mk([[0, "party"], [1, "party"], [2, "party"], [3, "couples"], [5, "party"], [6, "party"], [7, "party"], [8, "couples"], [10, "party"]]), affinity: { couples: 35, founders: 30, party: 94 } },
+  { id: "d3", offset: 3, short: "Cala d'Hort", name: "Cala d'Hort Slow Sail", route: "Marina Port Ibiza → Cala d'Hort → Cala Tarida", time: "10:00 – 18:00",
+    occupied: mk([[1, "couples"], [3, "founders"], [6, "couples"], [9, "founders"]]), affinity: { couples: 71, founders: 64, party: 25 } },
+  { id: "d4", offset: 4, short: "Tagomago", name: "Tagomago Founders Run", route: "Marina Port Ibiza → Tagomago → Cala Llonga", time: "09:30 – 17:30",
+    occupied: mk([[0, "founders"], [2, "founders"], [3, "founders"], [5, "couples"], [7, "founders"], [8, "founders"]]), affinity: { couples: 38, founders: 94, party: 31 } },
+  { id: "d5", offset: 5, short: "Espalmador", name: "Espalmador Wellness Cruise", route: "Marina Port Ibiza → S'Espalmador → Illetes", time: "10:00 – 18:00",
+    occupied: mk([[0, "couples"], [1, "couples"], [2, "founders"], [3, "founders"], [4, "couples"], [6, "founders"], [8, "couples"], [10, "party"]]), affinity: { couples: 80, founders: 70, party: 20 } }
+].map((d) => ({ ...d, date: day(d.offset) }));
+
+/* ======================================================================
+   CDP — 8 simulated clients
+   ====================================================================== */
+const TIERS = {
+  whale: { label: "High-Quality / Whales", icon: "🔥", range: "85–100", cls: "text-amber-300 bg-amber-400/10 ring-amber-400/30" },
+  mid: { label: "Mid-Tier / Aspirational", icon: "⚡", range: "50–84", cls: "text-sky-300 bg-sky-400/10 ring-sky-400/30" },
+  low: { label: "Low-Quality / Cherry Pickers", icon: "⚠️", range: "<50", cls: "text-rose-300 bg-rose-500/10 ring-rose-500/30" }
+};
+const tierOf = (score) => (score >= 85 ? "whale" : score >= 50 ? "mid" : "low");
+
+const CLIENTS = [
+  { id: "c1", name: "Alexander Brandt", initials: "AB", origin: "Munich, Germany", age: 47, profession: "Founder & ex-CEO, B2B SaaS (exited 2024)", worth: "€40–60M (est.)", capacity: "€25k+ / week in Ibiza", stay: "Rented villa, Cala Jondal · 3 weeks Jul–Aug", partner: { name: "Jondal Villa Collective", commission: 10 }, channel: "B2B villa partner", score: 96, member: false, vibe: "Networking & Founders",
+    history: [
+      { date: "2026-08-12", desc: "4 Bow seats + Magnum Dom Pérignon + Seabob", amount: 1920 },
+      { date: "2026-08-03", desc: "4 Captain's Lounge seats · Es Vedrà sunset", amount: 1120 },
+      { date: "2026-07-27", desc: "4 seats · Illetes + Seabob + rosé", amount: 1420 }
+    ], prior: 3300, cac: 210, surchargeMonth: 640,
+    nba: { prob: 91, kind: "upgrade", title: "VIP Membership upgrade", text: "This client has already paid €640 in non-member surcharges this month (8 seats × €80). Probability of VIP Membership conversion: 91%." } },
+  { id: "c2", name: "Chiara Montalbano", initials: "CM", origin: "Milan, Italy", age: 52, profession: "Principal, single-family office", worth: "€120M+ (est.)", capacity: "€40k+ / week in Ibiza", stay: "Owns a villa in Es Cubells · all season", partner: { name: "Es Cubells Estates", commission: 10 }, channel: "B2B villa partner", score: 93, member: true, vibe: "Sunset & Chill Couples",
+    history: [
+      { date: "2026-09-05", desc: "6 seats (member rate) · Espalmador + caviar service", amount: 1580 },
+      { date: "2026-08-20", desc: "11 seats (member rate) · full-boat birthday + DJ", amount: 2800 },
+      { date: "2026-07-14", desc: "3 seats (member rate) · Cala d'Hort", amount: 600 },
+      { date: "2026-04-30", desc: "VIP Membership · 2026 season", amount: 1200 }
+    ], prior: 6400, cac: 340, surchargeMonth: 0,
+    nba: { prob: 64, kind: "invest", title: "Investment Club invitation", text: "Member for 2 seasons, 20 seats booked in 2026 and owns a villa in Es Cubells. Matches the co-investor profile for boat #2 of the Investment Club. Probability of interest: 64%." } },
+  { id: "c3", name: "Omar Haddad", initials: "OH", origin: "Dubai, UAE", age: 44, profession: "Real-estate developer", worth: "€80M (est.)", capacity: "€30k / week in Ibiza", stay: "Rented villa, Cala Jondal · 2 weeks in August", partner: { name: "Jondal Villa Collective", commission: 10 }, channel: "B2B villa partner", score: 88, member: false, vibe: "Day Party & DJ",
+    history: [
+      { date: "2026-08-22", desc: "2-boat tandem · 16 guests · Formentera + DJ", amount: 5080 },
+      { date: "2026-07-02", desc: "5 seats · Es Vedrà sunset + Magnum Dom Pérignon", amount: 1950 }
+    ], prior: 0, cac: 480, surchargeMonth: 1280,
+    nba: { prob: 87, kind: "upgrade", title: "Membership + 2027 tandem pre-booking", text: "Paid €1,280 in surcharges on a single tandem day, more than the €1,200 season fee. Offer membership and hold 2 boats for his August 2027 week in the priority window. Probability: 87%." } },
+  { id: "c4", name: "Emma & James Whitfield", initials: "EW", origin: "London, UK", age: 38, profession: "Corporate lawyers (couple)", worth: "€3–5M household (est.)", capacity: "€6k / week in Ibiza", stay: "Hotel, Santa Eulària · returns every June & August", partner: null, channel: "Direct · Instagram ad", score: 74, member: false, vibe: "Sunset & Chill Couples",
+    history: [
+      { date: "2026-08-28", desc: "2 Stern seats · Es Vedrà sunset", amount: 560 },
+      { date: "2026-08-19", desc: "2 seats · Illetes Day Club", amount: 560 },
+      { date: "2026-07-10", desc: "2 seats · Tagomago + Seabob", amount: 810 }
+    ], prior: 0, cac: 95, surchargeMonth: 320,
+    nba: { prob: 68, kind: "upgrade", title: "Membership upsell", text: "6 seats this season and €480 paid in surcharges. They come back twice a year: at 15 seats the membership pays for itself. Probability of conversion: 68%." } },
+  { id: "c5", name: "Lucía Ferrer", initials: "LF", origin: "Madrid, Spain", age: 34, profession: "Marketing director, consumer brand", worth: "€1–2M (est.)", capacity: "€3k / week in Ibiza", stay: "Holiday rental, Sant Antoni · 1 week", partner: null, channel: "Direct · Google search", score: 63, member: false, vibe: "Day Party & DJ",
+    history: [{ date: "2026-09-12", desc: "4 seats · girls' trip to Formentera + 2 rosé", amount: 1220 }], prior: 0, cac: 120, surchargeMonth: 320,
+    nba: { prob: 54, kind: "referral", title: "Referral activation", text: "Brought 3 friends on her first trip. Turn her into a referrer: each friend who books earns her a free Seabob session. Probability of 1+ referral: 54%." } },
+  { id: "c6", name: "Noah Becker", initials: "NB", origin: "Zurich, Switzerland", age: 36, profession: "Fintech product lead, solo founder track", worth: "€2–4M (est.)", capacity: "€4k / week in Ibiza", stay: "Boutique hotel, Dalt Vila", partner: { name: "Dalt Vila Boutique Hotels", commission: 8 }, channel: "B2B hotel partner", score: 71, member: false, vibe: "Networking & Founders",
+    history: [
+      { date: "2026-09-18", desc: "1 seat · Tagomago Founders Run", amount: 280 },
+      { date: "2026-08-30", desc: "1 seat · Tagomago Founders Run", amount: 280 },
+      { date: "2026-07-22", desc: "1 seat · Es Vedrà sunset", amount: 280 }
+    ], prior: 0, cac: 60, surchargeMonth: 80,
+    nba: { prob: 58, kind: "upgrade", title: "Founders membership + guest pass", text: "Solo founder with 3 Founders Runs this season. Pitch the membership with a guest pass so he brings a co-founder. Probability: 58%." } },
+  { id: "c7", name: "Kevin Doyle", initials: "KD", origin: "Manchester, UK", age: 29, profession: "Stag-party organiser", worth: "n/a", capacity: "€80–120 / person budget", stay: "Hostel, Sant Antoni", partner: null, channel: "Direct · WhatsApp", score: 28, member: false, vibe: "Day Party & DJ",
+    history: [{ date: "2026-07-30", desc: "Inquiry only · 15 people on one boat, asked for 30% off", amount: 0 }], prior: 0, cac: 45, surchargeMonth: 0,
+    nba: { prob: 22, kind: "tandem", title: "One tandem offer, then discard", text: "Wants 15 people on one boat (legal maximum: 11 + captain) and a 30% discount. Make one 2-boat tandem offer at the day-pass rate. If refused, discard. Probability of closing: 22%." } },
+  { id: "c8", name: "Pierre Lemaire", initials: "PL", origin: "Lyon, France", age: 41, profession: "IT consultant", worth: "n/a", capacity: "€150 / person budget", stay: "Unknown", partner: null, channel: "Direct · web form", score: 19, member: false, vibe: "Sunset & Chill Couples",
+    history: [{ date: "2026-08-08", desc: "Inquiry only · Ibiza → Mallorca, wanted to sleep on board", amount: 0 }], prior: 0, cac: 30, surchargeMonth: 0,
+    nba: { prob: 12, kind: "nurture", title: "Nurture, no sales time", text: "Asked for Mallorca and an overnight stay, then rejected the Es Vedrà alternative. Move to newsletter nurture. Probability of booking: 12%." } }
+];
+
+const ltvOf = (c) => c.prior + c.history.reduce((a, h) => a + h.amount, 0);
+
+function whatsappFor(c) {
+  const first = c.name.split(" ")[0];
+  const m = {
+    upgrade: `Hi ${first}! Thank you for sailing with WOTAN this summer. We noticed you've paid ${eur(c.surchargeMonth)} in non-member surcharges this month alone. With the VIP Membership (${eur(MEMBERSHIP_FEE)} / season) every seat is a fixed ${eur(MEMBER_PRICE)} for you and your guests, you get a 7-day priority booking window, and our tender picks you up at your villa. Shall I activate it today so your next trip is already at the member rate? 🥂`,
+    invest: `Hi ${first}, it's been a pleasure having you on board again this season. We're opening the Vesorax Investment Club to a few members before boat #2 joins the fleet next summer. Given how often you sail with us, I'd love to share the investor memo and the 2027 projections. Would a short call this week work for you?`,
+    referral: `Hi ${first}! We loved having you and your friends on board. Here's your personal invite link: every friend who books a seat with it gets a welcome bottle, and you get a free Seabob session for each one. Want me to send it?`,
+    tandem: `Hi ${first}! By maritime law our Fjord 38 takes a maximum of 11 guests plus the captain, so 15 people can't sail on one boat. What I can offer you is a second boat sailing in tandem, so the whole group stays together all day. Shall I send you the tandem quote?`,
+    nurture: `Hi ${first}, thank you for your interest. We operate 8-hour day trips around Ibiza and Formentera only, so Mallorca and overnight stays aren't possible. I'll add you to our list so you hear first about sunset trips and early-season offers.`
+  };
+  return m[c.nba.kind];
+}
+
+/* ======================================================================
+   WOTAN rule engine (unchanged logic, updated prices)
+   ====================================================================== */
+const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const NUMS = { un: 1, uno: 1, una: 1, one: 1, dos: 2, two: 2, tres: 3, three: 3, cuatro: 4, four: 4, cinco: 5, five: 5, seis: 6, six: 6, siete: 7, seven: 7, ocho: 8, eight: 8, nueve: 9, nine: 9, diez: 10, ten: 10, once: 11, eleven: 11, doce: 12, twelve: 12, trece: 13, thirteen: 13, catorce: 14, fourteen: 14, quince: 15, fifteen: 15, dieciseis: 16, sixteen: 16, veinte: 20, twenty: 20 };
+const PEOPLE = "personas|persona|pax|people|guests|guest|invitados|amigos|amigas|adultos|adults|ninos|kids|children|pasajeros|passengers|friends|of us|colegas|clients|clientes";
+const OUT_ZONE = ["mallorca", "majorca", "menorca", "minorca", "palma", "cabrera", "valencia", "denia", "javea", "alicante", "barcelona", "sardinia", "cerdena", "corsica", "marbella", "mykonos", "capri", "saint-tropez", "monaco"];
+const IN_ZONE = ["ibiza", "eivissa", "formentera", "vedra", "illetes", "espalmador", "sant antoni", "san antonio", "talamanca", "tagomago", "cala "];
+const NIGHT = ["dormir", "pernoct", "pasar la noche", "noche a bordo", "overnight", "sleep", "stay the night", "spend the night", "night on board", "dos dias", "2 dias", "two days", "2 days", "liveaboard"];
+const REFUSE = ["no me interesa otra", "o nada", "no me vale", "not interested in", "only want", "solo quiero", "nothing else", "no other", "insisto", "or nothing"];
+const VIP_SIG = ["villa", "company", "empresa", "ceo", "founder", "fundador", "empresario", "business", "corporat", "season", "temporada", "all summer", "todo el verano", "all august", "all july", "all of july", "all of august", "every week", "cada semana", "several times", "varias veces", "membership", "membresia", "member", "socio", "clients", "concierge", "butler", "family office", "private", "privado", "jondal", "cubells"];
+const SEAT_SIG = ["seat", "plaza", "asiento", "ticket", "per person", "por persona", "how much", "cuanto", "cheap", "barato", "discount", "descuento", "solo traveller", "honeymoon", "my partner", "mi pareja", "join"];
+const has = (t, list) => list.filter((k) => t.includes(k));
+const cap1 = (s) => s.replace(/\b\w/g, (c) => c.toUpperCase());
+
+function detectPax(t) {
+  let s = " " + t.replace(/[^\w\s'-]/g, " ") + " ";
+  s = s.replace(/\b([a-z]+)\b/g, (w) => (NUMS[w] != null ? String(NUMS[w]) : w));
+  const nouns = [...s.matchAll(new RegExp("\\b(\\d{1,3})\\s+(?:[a-z]+\\s+)?(" + PEOPLE + ")\\b", "g"))].map((m) => ({ n: +m[1], how: m[0].trim() }));
+  const lead = [...s.matchAll(/\b(?:somos|seremos|seriamos|we are|we're|group of|party of|grupo de)\s+(\d{1,3})\b/g)].map((m) => ({ n: +m[1], how: m[0].trim() }));
+  let best = [...nouns, ...lead].filter((x) => x.n > 0 && x.n < 200).sort((a, b) => b.n - a.n)[0] || null;
+  if (/\b(my wife|my husband|mi mujer|mi marido|mi pareja|my partner)\b/.test(s)) {
+    const kids = s.match(/\b(\d{1,2})\s+(?:[a-z]+\s+)?(kids|children|ninos|hijos)\b/);
+    const fam = { n: 2 + (kids ? +kids[1] : 0), how: kids ? "couple + " + kids[1] + " kids" : "couple" };
+    if (!best || kids) best = fam;
+  }
+  if (!best && /\b(solo traveller|just me|only me|solo yo)\b/.test(s)) best = { n: 1, how: "solo traveller" };
+  if (!best) { const two = s.match(/\b(\d{1,2})\s+(seats|plazas|tickets)\b/); if (two) best = { n: +two[1], how: two[0] }; }
+  return best;
+}
+function langOf(text) {
+  const t = " " + norm(text) + " ";
+  const en = (t.match(/\b(the|and|we|you|my|our|for|with|would|what|is|are|please)\b/g) || []).length;
+  const es = (t.match(/\b(el|la|los|y|que|de|para|somos|queremos|hola|con|por|una|mi)\b/g) || []).length;
+  return en >= es ? "en" : "es";
+}
+
+function analyzeRules(text) {
+  const t = " " + norm(text) + " ";
+  const paxInfo = detectPax(t);
+  const pax = paxInfo ? paxInfo.n : null;
+  const out = has(t, OUT_ZONE), inz = [...new Set(has(t, IN_ZONE).map((s) => s.trim()))];
+  const night = has(t, NIGHT).length > 0, refuses = has(t, REFUSE).length > 0;
+  const vip = has(t, VIP_SIG), seat = has(t, SEAT_SIG);
+  const geoFail = out.length > 0, capFail = pax != null && pax > CAPACITY;
+  const lang = langOf(text);
+  const discount = /discount|descuento|rebaja|cheaper|mas barato/.test(t);
+
+  let profile;
+  if (refuses && (geoFail || night || capFail)) profile = "lost";
+  else if (vip.length > seat.length || (pax != null && pax >= 8 && seat.length === 0 && !discount)) profile = "vip";
+  else profile = "seat";
+
+  const nAlerts = [geoFail, capFail, night].filter(Boolean).length;
+  let score = profile === "vip" ? 86 + Math.min(12, vip.length * 3) : profile === "seat" ? 58 + Math.min(20, seat.length * 4) : 18;
+  score -= nAlerts * 9 + (discount ? 25 : 0);
+  if (profile === "lost") score = clamp(score, 5, 45);
+  score = clamp(Math.round(score), 5, 99);
+
+  const dest = out[0] ? cap1(out[0]) : "";
+  const alerts = {
+    capacity: { label: "Maximum capacity: 11 pax", ok: !capFail, detail: capFail ? `${pax} passengers requested. Maritime law caps the Fjord 38 at 11 + captain → 2-boat tandem growth hack, close on WhatsApp.` : pax != null ? `${pax} of 11 seats.` : "Group size not stated. Ask in the reply." },
+    overnight: { label: "0 overnight stays", ok: !night, detail: night ? "Asks to sleep on board. Not allowed: 8-hour day charter." : "No overnight request." },
+    geo: { label: "Ibiza & Formentera only", ok: !geoFail, detail: geoFail ? `Destination out of range: ${out.map(cap1).join(", ")}. Reroute to Es Vedrà or Illetes.` : inz.length ? `Within range (${inz.join(", ")}).` : "No destination given. Suggest Es Vedrà or Illetes." }
+  };
+
+  const bits = [pax != null ? `Group of ${pax}` : "Group size unknown"];
+  if (geoFail) bits.push(`wants to sail to ${dest}`); else if (inz.length) bits.push(`interested in ${inz.join(", ")}`);
+  if (night) bits.push("wants to stay overnight");
+  if (discount) bits.push("asks for a discount");
+  if (vip.length) bits.push(`premium signals (${vip.slice(0, 3).join(", ")})`);
+  if (seat.length && !vip.length) bits.push("price-per-seat shopper");
+
+  const suggestion = [];
+  if (capFail) suggestion.push("Offer a second boat sailing in tandem and hand the close to the team on WhatsApp today.");
+  if (geoFail) suggestion.push("Reroute to the premium Es Vedrà sunset or Illetes (Formentera) instead of losing the lead.");
+  if (night) suggestion.push("Replace the overnight with a sunset finish and a tender transfer back to the villa.");
+  if (profile === "vip") suggestion.push(`Pitch the VIP Membership: ${eur(MEMBER_PRICE)} per seat instead of ${eur(DAY_PASS)}, ${eur(MEMBERSHIP_FEE)} per season.`, "If they stay in a villa, log the B2B villa partner for commission and repeat outings.");
+  if (profile === "seat") suggestion.push("Sell seats on the next departure: 2 concrete dates and the day-pass price.", "Use real scarcity (seats left) and close payment in the chat. Upsell membership after the trip.");
+  if (profile === "lost") suggestion.push("Close politely and move to newsletter nurture. No more sales time.");
+
+  return { source: "rules", lang, profile, pax, score, paxDetail: paxInfo ? `Detected from “${paxInfo.how}”.` : "Not stated in the message.", summary: bits.join("; ") + ".", alerts, suggestion, reply: buildReply(lang, profile, { pax, dest, capFail, geoFail, night }), whatsapp: capFail };
+}
+
+function buildReply(lang, profile, c) {
+  const p = [];
+  if (lang === "es") {
+    p.push("¡Hola! Gracias por escribirnos.");
+    if (c.capFail) p.push(`Eso no es posible debido a la normativa marítima, que limita el barco a 11 pasajeros más el capitán, pero puedo ofrecerte un segundo barco navegando en tándem para que vuestro grupo de ${c.pax} vaya junto. El equipo te pasa los detalles por WhatsApp.`);
+    if (c.geoFail) p.push(`Eso no es posible debido a que operamos solo en Ibiza y Formentera y un day-charter de 8 horas no permite ir a ${c.dest} y volver, pero puedo ofrecerte la ruta premium a Es Vedrà al atardecer o Illetes en Formentera.`);
+    if (c.night) p.push("Pernoctar no es posible debido a que es un chárter diurno de 8 horas, pero puedo ofrecerte terminar con la puesta de sol frente a Es Vedrà y traslado en tender a vuestra villa.");
+    if (profile === "vip") p.push(`Para varias salidas te recomiendo la membresía VIP (${MEMBERSHIP_FEE} € / temporada): ${MEMBER_PRICE} € por plaza en lugar de ${DAY_PASS} € y 7 días de reserva prioritaria.`);
+    if (profile === "seat") p.push("Quedan plazas en las próximas salidas y te reservo la tuya ahora mismo.");
+    if (profile === "lost") p.push("Si cambian vuestros planes, estaremos encantados de recibiros en Ibiza o Formentera.");
+    if (c.pax == null && profile !== "lost") p.push("¿Cuántas personas seríais y qué fecha os viene mejor?");
+    p.push("Un saludo,\nVesorax Concierge · WOTAN");
+  } else {
+    p.push("Hello, and thank you for reaching out!");
+    if (c.capFail) p.push(`That isn't possible because maritime law limits our yacht to 11 guests plus the captain, but I can offer you a second boat sailing in tandem so your group of ${c.pax} stays together. Our team will send the details on WhatsApp.`);
+    if (c.geoFail) p.push(`That isn't possible because we only operate in Ibiza and Formentera, and an 8-hour day charter can't reach ${c.dest} and return, but I can offer you our premium Es Vedrà sunset route or Illetes in Formentera.`);
+    if (c.night) p.push("Staying overnight isn't possible because this is an 8-hour day charter, but I can offer you a sunset finish at Es Vedrà with a tender transfer back to your villa.");
+    if (profile === "vip") p.push(`For several outings our VIP Membership (€${MEMBERSHIP_FEE} / season) is the smart choice: €${MEMBER_PRICE} per seat instead of €${DAY_PASS}, plus a 7-day priority booking window.`);
+    if (profile === "seat") p.push("We still have seats on the upcoming departures and I can hold yours right now.");
+    if (profile === "lost") p.push("If your plans change, we'd love to welcome you on board in Ibiza or Formentera.");
+    if (c.pax == null && profile !== "lost") p.push("How many guests will join, and which date suits you best?");
+    p.push("Warm regards,\nVesorax Concierge · WOTAN");
+  }
+  return p.join("\n\n");
+}
+
+const AI_PROMPT = `You are WOTAN, the AI sales engine of the Vesorax agency for a "Public Yacht Club" on a 2020 Fjord 38 Xpress at Marina Port Ibiza (individual seats: day pass €${DAY_PASS} incl. 40% non-member surcharge, VIP member €${MEMBER_PRICE}/seat, membership €${MEMBERSHIP_FEE}/season; B2B deals with villa managers).
+MANDATORY RULES:
+1. Geography: Ibiza and Formentera ONLY. Mallorca, Menorca, Valencia etc. are refused politely (8-hour day charter) and rerouted to a premium alternative (Es Vedrà, Illetes).
+2. Capacity: max 11 passengers + captain by maritime law. 12+ → refuse citing the law, propose a 2nd boat in tandem and hand the close to the team on WhatsApp.
+3. Overnight: forbidden in every case (8-hour day charter). Deny directly but kindly.
+4. Tone: never a bare "No". Always: "That isn't possible because [reason], but I can offer you [alternative]".
+5. Profile, exactly one: "vip" (luxury/business profile, membership candidate), "seat" (aspirational tourist buying seats for one departure), "lost" (breaks rules AND rejects the alternatives; never on a first contact that hasn't rejected alternatives).
+6. score: lead score 0-100. vip 85-100, seat 50-84, discount hunters / rule breakers below 50.
+Write "reply" in the SAME language as the customer. Everything else in English.
+Return ONLY JSON:
+{"summary": string, "pax": integer|null, "paxDetail": string, "profile": "vip"|"seat"|"lost", "score": integer, "alerts": {"capacity": {"ok": bool, "detail": string}, "overnight": {"ok": bool, "detail": string}, "geo": {"ok": bool, "detail": string}}, "suggestion": [3-4 short sales actions], "reply": string, "whatsapp": bool}`;
+
+function mergeAI(r, base) {
+  if (!r || typeof r !== "object") return base;
+  const out = { ...base, source: "ai" };
+  if (["vip", "seat", "lost"].includes(r.profile)) out.profile = r.profile;
+  if (Number.isInteger(r.pax)) out.pax = r.pax;
+  if (Number.isFinite(r.score)) out.score = clamp(Math.round(r.score), 0, 100);
+  for (const k of ["paxDetail", "summary", "reply"]) if (r[k]) out[k] = r[k];
+  if (Array.isArray(r.suggestion) && r.suggestion.length) out.suggestion = r.suggestion;
+  const a = r.alerts || {};
+  out.alerts = {};
+  for (const k of ["capacity", "overnight", "geo"]) {
+    const b = base.alerts[k], ai = a[k] || {};
+    const ok = b.ok && ai.ok !== false; // hard rules always win
+    out.alerts[k] = { label: b.label, ok, detail: !ok && ai.ok === false && ai.detail ? ai.detail : b.detail };
+  }
+  out.whatsapp = !!r.whatsapp || (out.pax != null && out.pax > CAPACITY);
+  return out;
+}
+
+const LEAD_PROFILES = {
+  vip: { label: "VIP Member / Recurring Potential", short: "VIP", cls: "text-amber-300 bg-amber-400/10 ring-amber-400/30" },
+  seat: { label: "Individual Seat Client", short: "Seat", cls: "text-sky-300 bg-sky-400/10 ring-sky-400/30" },
+  lost: { label: "Non-viable Lead / Discarded", short: "Lost", cls: "text-rose-300 bg-rose-500/10 ring-rose-500/30" }
+};
+
+/* ======================================================================
+   INVESTMENT CLUB MODEL (per boat, per season)
+   Sources: growth audit PDF (184 sellable days, €1,500–2,000/day, marketplaces 23–26%).
+   Everything else is a modelling assumption shown in the UI.
+   ====================================================================== */
+const MODEL = { tradDayRate: 1750, tradOcc: 0.35, tradMarketplaceShare: 0.6, marketplaceFee: 0.25, opCostPerDay: 650, fixedPerBoat: 60000, memberSeatShare: 0.55, extrasPerSeat: 30, fbPerSeat: 25, acquisition: 0.10, hqBase: 90000, hqPerBoat: 15000 };
+
+function simulate(boats, occ, membersPerBoat) {
+  const m = MODEL;
+  const tradDays = SELLABLE_DAYS * m.tradOcc;
+  const tradRev = tradDays * m.tradDayRate;
+  const tradEbitda = tradRev - tradRev * m.tradMarketplaceShare * m.marketplaceFee - tradDays * m.opCostPerDay - m.fixedPerBoat;
+  const seats = SELLABLE_DAYS * CAPACITY * occ;
+  const blended = m.memberSeatShare * MEMBER_PRICE + (1 - m.memberSeatShare) * DAY_PASS;
+  const seatRev = seats * blended, extras = seats * m.extrasPerSeat, memb = membersPerBoat * MEMBERSHIP_FEE;
+  const revBoat = seatRev + extras + memb;
+  const costBoat = SELLABLE_DAYS * m.opCostPerDay + seats * m.fbPerSeat + (seatRev + extras) * m.acquisition + m.fixedPerBoat;
+  const hq = m.hqBase + m.hqPerBoat * boats;
+  const rev = revBoat * boats, ebitda = (revBoat - costBoat) * boats - hq;
+  return {
+    boats, rev, ebitda, margin: ebitda / rev, mrr: (memb * boats) / SEASON_MONTHS, monthly: rev / SEASON_MONTHS,
+    seats: seats * boats, members: membersPerBoat * boats,
+    trad: { rev: tradRev * boats, ebitda: tradEbitda * boats, occ: m.tradOcc }
+  };
+}
+
+/* ======================================================================
+   SHARED UI
+   ====================================================================== */
+function TopToggle({ mode, setMode }) {
+  const biz = mode === "biz";
+  const opt = (id, long, short) => {
+    const on = mode === id;
+    return html`<button type="button" role="tab" aria-selected=${on} onClick=${() => setMode(id)}
+      className=${"relative flex-1 rounded-full px-3 sm:px-5 py-2.5 text-[11px] sm:text-xs font-bold tracking-wide transition whitespace-nowrap " +
+        (on ? (id === "biz" ? "bg-[#8B93FF] text-[#0A0B0F] shadow-[0_0_0_1px_rgba(139,147,255,.4),0_8px_24px_-8px_rgba(139,147,255,.6)]" : "bg-[#0E2240] text-[#F8F6F1] shadow-lg") : biz ? "text-[#8A90A0] hover:text-white" : "text-[#0E2240]/60 hover:text-[#0E2240]")}>
+      <span className="hidden md:inline">[ ${long} ]</span><span className="md:hidden">${short}</span></button>`;
+  };
+  return html`
+    <header className=${"sticky top-0 z-40 border-b backdrop-blur-md " + (biz ? "bg-[#0A0B0F]/85 border-[#1F222B]" : "bg-[#F8F6F1]/85 border-[#0E2240]/10")}>
+      <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+        <div className="flex items-center gap-2.5">
+          <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><rect width="30" height="30" rx="8" fill=${biz ? "#8B93FF" : "#0E2240"}/><path d="M8 19c2.5 2 4.5 2 7 0s4.5-2 7 0M15 7v10m0-10 5 8h-5" stroke=${biz ? "#0A0B0F" : "#C8A45D"} strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <div className="leading-tight">
+            <div className=${"font-bold tracking-tight " + (biz ? "text-white" : "text-[#0E2240]")}>Vesorax Hub</div>
+            <div className=${"text-[10px] font-mono uppercase tracking-[.18em] " + (biz ? "text-[#8A90A0]" : "text-[#0E2240]/50")}>WOTAN · Fjord 38 Xpress</div>
+          </div>
+        </div>
+        <div role="tablist" aria-label="Mode" className=${"flex w-full sm:w-auto p-1 rounded-full border " + (biz ? "bg-[#111318] border-[#1F222B]" : "bg-white border-[#0E2240]/10")}>
+          ${opt("biz", "BUSINESS MODE: WOTAN CRM & CDP (B2B)", "BUSINESS · CRM & CDP")}
+          ${opt("client", "CLIENT MODE: PUBLIC YACHT CLUB (B2C)", "CLIENT · YACHT CLUB")}
+        </div>
+      </div>
+    </header>`;
+}
+
+function Toast({ msg, biz }) {
+  if (!msg) return null;
+  return html`<div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] px-4 w-full max-w-md pointer-events-none" role="status">
+    <div className=${"rise rounded-xl px-4 py-3 shadow-2xl text-sm font-semibold text-center " + (biz ? "bg-[#8B93FF] text-[#0A0B0F]" : "bg-[#0E2240] text-[#F8F6F1] ring-1 ring-[#C8A45D]")}>${msg}</div></div>`;
+}
+
+function useEsc(open, onClose) {
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", h);
+    document.body.classList.add("noscroll");
+    return () => { window.removeEventListener("keydown", h); document.body.classList.remove("noscroll"); };
+  }, [open]);
+}
+
+async function copyText(t) { try { await navigator.clipboard.writeText(t); return true; } catch { return false; } }
+
+/* ======================================================================
+   CLIENT MODE
+   ====================================================================== */
+const SEAT_POS = [
+  [118, 252], [160, 214], [202, 252],               // Bow Sunbed
+  [77, 503], [77, 578], [243, 503], [243, 578], [160, 628], // Captain's Lounge
+  [100, 700], [160, 700], [220, 700]                // Stern Sunpad
+];
+
+function BoatMap({ dep, selected, onSeat }) {
+  const occ = new Map(dep.occupied.map((o) => [o.seat, o.p]));
+  return html`
+  <svg viewBox="0 0 320 800" className="w-full max-w-[340px] mx-auto h-auto" role="group" aria-label="Fjord 38 Xpress seat map, top-down view">
+    <defs>
+      <linearGradient id="hullg" x1="0" x2="1"><stop offset="0" stopColor="#E7EBEF"/><stop offset=".5" stopColor="#FFFFFF"/><stop offset="1" stopColor="#E7EBEF"/></linearGradient>
+      <pattern id="teak" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="#B07A47"/><rect width="8" height="1.4" fill="#8C5D33"/></pattern>
+      <pattern id="teakv" width="7" height="7" patternUnits="userSpaceOnUse"><rect width="7" height="7" fill="#C08B57"/><rect width="1.2" height="7" fill="#946338"/></pattern>
+    </defs>
+    <!-- swim platform -->
+    <rect x="52" y="758" width="216" height="26" rx="6" fill="url(#teakv)" stroke="#0E2240" strokeOpacity=".25"/>
+    <!-- hull -->
+    <path d="M160,10 C216,70 288,190 293,330 L293,712 Q293,760 246,762 L74,762 Q27,760 27,712 L27,330 C32,190 104,70 160,10 Z" fill="url(#hullg)" stroke="#0E2240" strokeWidth="2.5"/>
+    <!-- deck -->
+    <path d="M160,34 C208,88 272,200 277,334 L277,706 Q277,744 240,746 L80,746 Q43,744 43,706 L43,334 C48,200 112,88 160,34 Z" fill="#F4F1EA" stroke="#0E2240" strokeOpacity=".18"/>
+    <!-- bow rail -->
+    <path d="M160,26 C212,82 280,196 285,332" fill="none" stroke="#9AA6B2" strokeWidth="2"/><path d="M160,26 C108,82 40,196 35,332" fill="none" stroke="#9AA6B2" strokeWidth="2"/>
+    <!-- bow sunpad -->
+    <path d="M160,150 C198,178 234,224 238,276 L238,300 L82,300 L82,276 C86,224 122,178 160,150 Z" fill="#E6DCC6" stroke="#C8A45D" strokeWidth="1.5"/>
+    <line x1="88" y1="262" x2="232" y2="262" stroke="#C8A45D" strokeOpacity=".5"/>
+    <text x="160" y="292" textAnchor="middle" fontSize="9" letterSpacing="2" fill="#7A6A45" fontFamily="Manrope, system-ui, sans-serif" fontWeight="700">BOW SUNBED</text>
+    <!-- T-top + helm console -->
+    <rect x="96" y="330" width="128" height="116" rx="12" fill="#0E2240" fillOpacity=".07" stroke="#0E2240" strokeOpacity=".35" strokeDasharray="5 4"/>
+    <path d="M124,362 Q160,340 196,362" fill="none" stroke="#5B87A6" strokeWidth="5" strokeLinecap="round" opacity=".7"/>
+    <rect x="124" y="360" width="72" height="56" rx="10" fill="#DCE3EA" stroke="#0E2240" strokeOpacity=".35"/>
+    <circle cx="160" cy="392" r="10" fill="none" stroke="#0E2240" strokeWidth="2.5"/>
+    <circle cx="160" cy="434" r="13" fill="#0E2240"/><text x="160" y="438" textAnchor="middle" fontSize="9" fill="#C8A45D" fontWeight="800" fontFamily="Manrope, system-ui, sans-serif">CAPT</text>
+    <text x="160" y="344" textAnchor="middle" fontSize="8.5" letterSpacing="2" fill="#0E2240" fillOpacity=".55" fontFamily="Manrope, system-ui, sans-serif" fontWeight="700">HELM · T-TOP</text>
+    <!-- Captain's lounge: U bench + teak table -->
+    <text x="160" y="470" textAnchor="middle" fontSize="9" letterSpacing="2" fill="#7A6A45" fontFamily="Manrope, system-ui, sans-serif" fontWeight="700">CAPTAIN'S LOUNGE</text>
+    <rect x="58" y="480" width="38" height="164" rx="10" fill="#E6DCC6" stroke="#C8A45D" strokeWidth="1.2"/>
+    <rect x="224" y="480" width="38" height="164" rx="10" fill="#E6DCC6" stroke="#C8A45D" strokeWidth="1.2"/>
+    <rect x="58" y="610" width="204" height="36" rx="10" fill="#E6DCC6" stroke="#C8A45D" strokeWidth="1.2"/>
+    <rect x="114" y="492" width="92" height="104" rx="10" fill="url(#teak)" stroke="#6E4724" strokeWidth="1.2"/>
+    <text x="160" y="548" textAnchor="middle" fontSize="8" letterSpacing="1.5" fill="#FFF3DF" fontFamily="Manrope, system-ui, sans-serif" fontWeight="700">TEAK TABLE</text>
+    <!-- stern sunpad -->
+    <rect x="58" y="668" width="204" height="64" rx="14" fill="#E6DCC6" stroke="#C8A45D" strokeWidth="1.5"/>
+    <text x="160" y="745" textAnchor="middle" fontSize="9" letterSpacing="2" fill="#7A6A45" fontFamily="Manrope, system-ui, sans-serif" fontWeight="700">STERN SUNPAD · OPEN TRANSOM</text>
+    <!-- seats -->
+    ${SEAT_POS.map(([x, y], i) => {
+      const taken = occ.has(i), sel = selected.includes(i);
+      const fill = taken ? "#D04A4A" : sel ? "#0E2240" : "#2E9E6B";
+      const label = `Seat ${i + 1}, ${zoneOf(i).name}, ${taken ? "occupied" : sel ? "selected" : "available"}`;
+      return html`<g key=${i} role="button" tabIndex=${taken ? -1 : 0} aria-label=${label} aria-disabled=${taken}
+        className=${"seat" + (taken ? " taken" : "")}
+        onClick=${() => !taken && onSeat(i)} onKeyDown=${(e) => { if (!taken && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onSeat(i); } }}>
+        ${sel && html`<circle cx=${x} cy=${y} r="25" fill="none" stroke="#C8A45D" strokeWidth="3.5"/>`}
+        <circle cx=${x} cy=${y} r="19" fill=${fill} stroke="#fff" strokeWidth="3"/>
+        <text x=${x} y=${y + 5} textAnchor="middle" fontSize="14" fontWeight="800" fill="#fff" fontFamily="Manrope, system-ui, sans-serif" style=${{ pointerEvents: "none" }}>${i + 1}</text>
+      </g>`;
+    })}
+  </svg>`;
+}
+
+/* ---- default photo illustrations (shown until real photos are added) ---- */
+function DefaultPhoto({ kind }) {
+  if (kind === "exterior") return html`
+    <svg viewBox="0 0 400 250" className="w-full h-full" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <defs><linearGradient id="sk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#F3D9A8"/><stop offset=".55" stopColor="#E9B98A"/><stop offset="1" stopColor="#9FC3D4"/></linearGradient>
+      <linearGradient id="se" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2D6E8E"/><stop offset="1" stopColor="#0E2240"/></linearGradient></defs>
+      <rect width="400" height="250" fill="url(#sk)"/><circle cx="300" cy="120" r="34" fill="#FBE8C2" opacity=".9"/>
+      <path d="M210,150 L262,92 L300,150 Z" fill="#5E6F80" opacity=".55"/>
+      <rect y="148" width="400" height="102" fill="url(#se)"/>
+      <path d="M40,192 C120,186 190,186 262,182 L300,176 C306,186 300,196 290,200 L60,204 C48,204 42,198 40,192 Z" fill="#F8F6F1"/>
+      <path d="M60,204 L290,200 C286,206 280,208 270,209 L76,210 Z" fill="#0E2240"/>
+      <path d="M120,182 L130,160 L196,160 L214,182 Z" fill="#DCE3EA"/><rect x="118" y="152" width="100" height="5" rx="2" fill="#0E2240"/>
+      <path d="M300,190 C340,196 380,200 400,200" stroke="#fff" strokeWidth="3" opacity=".7" fill="none"/>
+      <path d="M0,214 C60,210 120,214 180,212" stroke="#fff" strokeWidth="2" opacity=".35" fill="none"/>
+    </svg>`;
+  if (kind === "bow") return html`
+    <svg viewBox="0 0 400 250" className="w-full h-full" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <defs><radialGradient id="aq" cx=".5" cy=".4" r=".8"><stop offset="0" stopColor="#5BC0C9"/><stop offset="1" stopColor="#1D6A86"/></radialGradient></defs>
+      <rect width="400" height="250" fill="url(#aq)"/>
+      <path d="M200,-10 C262,40 300,120 304,260 L96,260 C100,120 138,40 200,-10 Z" fill="#F8F6F1"/>
+      <path d="M200,40 C240,70 262,118 266,180 L134,180 C138,118 160,70 200,40 Z" fill="#E6DCC6" stroke="#C8A45D" strokeWidth="2"/>
+      <rect x="160" y="120" width="34" height="14" rx="6" fill="#fff" opacity=".9"/><rect x="204" y="120" width="34" height="14" rx="6" fill="#fff" opacity=".9"/>
+      <circle cx="180" cy="160" r="9" fill="#C8A45D"/><circle cx="222" cy="152" r="7" fill="#0E2240" opacity=".7"/>
+      <path d="M40,60 c20,-6 40,6 60,0 M300,200 c20,-6 40,6 60,0 M20,200 c20,-6 40,6 60,0" stroke="#fff" opacity=".35" strokeWidth="3" fill="none"/>
+    </svg>`;
+  return html`
+    <svg viewBox="0 0 400 250" className="w-full h-full" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <defs><pattern id="tk2" width="12" height="12" patternUnits="userSpaceOnUse"><rect width="12" height="12" fill="#B07A47"/><rect width="12" height="2" fill="#8C5D33"/></pattern></defs>
+      <rect width="400" height="250" fill="#F4F1EA"/>
+      <rect x="40" y="30" width="60" height="190" rx="14" fill="#E6DCC6" stroke="#C8A45D" strokeWidth="2"/>
+      <rect x="300" y="30" width="60" height="190" rx="14" fill="#E6DCC6" stroke="#C8A45D" strokeWidth="2"/>
+      <rect x="40" y="180" width="320" height="50" rx="14" fill="#E6DCC6" stroke="#C8A45D" strokeWidth="2"/>
+      <rect x="135" y="55" width="130" height="110" rx="12" fill="url(#tk2)" stroke="#6E4724" strokeWidth="2"/>
+      <circle cx="170" cy="95" r="10" fill="#fff" opacity=".85"/><circle cx="230" cy="125" r="10" fill="#fff" opacity=".85"/>
+      <path d="M196,92 l6,30 l6,-30 Z" fill="#C8A45D"/>
+      <rect x="0" y="0" width="400" height="18" fill="#0E2240" opacity=".85"/>
+    </svg>`;
+}
+
+const PHOTO_SLOTS = [
+  { id: "exterior", title: "Exterior · Under way", caption: "Deep-V Fjord hull, walkaround deck, T-top shade.",
+    specs: [["Length", "11.63 m"], ["Beam", "3.64 m"], ["Year", "2020"], ["Home port", "Marina Port Ibiza"]] },
+  { id: "bow", title: "Bow Sunpad", caption: "Seats 1–3. The front-row sunbed with open sea views.",
+    specs: [["Engines", "2 × Volvo Penta"], ["Top speed", "≈ 40 kn*"], ["Guests", "11 + captain"], ["Trip", "8 h day charter"]] },
+  { id: "lounge", title: "Central Teak Lounge", caption: "Seats 4–8. U-shaped lounge around the teak table.",
+    specs: [["Audio", "Fusion Marine"], ["Shade", "Hard T-top"], ["Table", "Teak, central"], ["Extras", "Seabob · Champagne"]] }
+];
+const PHOTO_LS = "vesorax-photos-v1";
+
+async function downscale(file) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  const blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.85));
+  const small = document.createElement("canvas");
+  const k2 = Math.min(1, 900 / Math.max(c.width, c.height));
+  small.width = Math.round(c.width * k2); small.height = Math.round(c.height * k2);
+  small.getContext("2d").drawImage(c, 0, 0, small.width, small.height);
+  return { blob, dataUrl: small.toDataURL("image/jpeg", 0.8) };
+}
+
+function useBoatPhotos(say) {
+  const [photos, setPhotos] = useState({});
+  const [where, setWhere] = useState("this browser");
+  const cloud = useRef({ assets: null, db: null });
+  useEffect(() => {
+    let local = {};
+    try { local = JSON.parse(localStorage.getItem(PHOTO_LS) || "{}"); } catch {}
+    setPhotos(local);
+    if (!(window.claude && window.claude.use)) return;
+    Promise.all([window.claude.use("assets"), window.claude.use("db")]).then(async ([assets, db]) => {
+      cloud.current = { assets, db };
+      if (!db) return;
+      try {
+        const snap = await db.doc("media/boat").get();
+        if (snap.exists) {
+          const d = snap.data(), next = {};
+          for (const s of PHOTO_SLOTS) if (d[s.id] && d[s.id].id) next[s.id] = "/_blob/" + d[s.id].id;
+          setPhotos((p) => ({ ...p, ...next }));
+        }
+        if (assets) setWhere("the artifact (shared)");
+      } catch {}
+    });
+  }, []);
+
+  const save = useCallback(async (slot, file) => {
+    if (!file || !file.type.startsWith("image/")) { say("That file isn't an image. Use JPG, PNG, HEIC exported as JPG, or WebP."); return; }
+    try {
+      const { blob, dataUrl } = await downscale(file);
+      setPhotos((p) => ({ ...p, [slot]: dataUrl }));
+      const { assets, db } = cloud.current;
+      if (assets && db) {
+        try {
+          const r = await assets.upload(blob);
+          const snap = await db.doc("media/boat").get();
+          const cur = snap.exists ? { ...snap.data() } : {};
+          cur[slot] = { id: r.id, at: Date.now() };
+          await db.doc("media/boat").set(cur);
+          say("Photo saved to the artifact. Everyone you share it with sees it.");
+          return;
+        } catch (e) { /* fall through to local save */ }
+      }
+      try {
+        const local = JSON.parse(localStorage.getItem(PHOTO_LS) || "{}");
+        local[slot] = dataUrl;
+        localStorage.setItem(PHOTO_LS, JSON.stringify(local));
+        say("Photo saved in this browser.");
+      } catch { say("Photo shown, but this browser blocked saving it. It will reset on reload."); }
+    } catch { say("Couldn't read that image. Try a JPG or PNG screenshot."); }
+  }, [say]);
+
+  const reset = useCallback(async (slot) => {
+    setPhotos((p) => { const n = { ...p }; delete n[slot]; return n; });
+    try { const local = JSON.parse(localStorage.getItem(PHOTO_LS) || "{}"); delete local[slot]; localStorage.setItem(PHOTO_LS, JSON.stringify(local)); } catch {}
+    const { db } = cloud.current;
+    if (db) { try { const snap = await db.doc("media/boat").get(); if (snap.exists) { const cur = { ...snap.data() }; delete cur[slot]; await db.doc("media/boat").set(cur); } } catch {} }
+  }, []);
+  return { photos, save, reset, where };
+}
+
+function PhotoCard({ slot, src, active, setActive, onFile, onReset }) {
+  const [drag, setDrag] = useState(false);
+  const input = useRef(null);
+  return html`
+    <article className=${"group rounded-3xl overflow-hidden bg-white border transition " + (active ? "border-[#C8A45D] shadow-[0_20px_50px_-24px_rgba(14,34,64,.45)]" : "border-[#0E2240]/10")}
+      onMouseEnter=${() => setActive(slot.id)} onFocus=${() => setActive(slot.id)}>
+      <div tabIndex="0" role="button" aria-label=${"Photo of " + slot.title + ". Click to upload, drop a file or paste an image."}
+        onClick=${() => input.current && input.current.click()}
+        onKeyDown=${(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.current.click(); } }}
+        onDragOver=${(e) => { e.preventDefault(); setDrag(true); }} onDragLeave=${() => setDrag(false)}
+        onDrop=${(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) onFile(slot.id, f); }}
+        className=${"relative aspect-[16/10] w-full cursor-pointer overflow-hidden " + (drag ? "ring-4 ring-inset ring-[#C8A45D]" : "")}>
+        ${src ? html`<img src=${src} alt=${slot.title} className="w-full h-full object-cover" />` : html`<${DefaultPhoto} kind=${slot.id} />`}
+        <div className=${"absolute inset-x-3 bottom-3 flex justify-between items-center gap-2 transition " + (active || drag ? "opacity-100" : "opacity-0 group-hover:opacity-100")}>
+          <span className="rounded-full bg-[#0E2240]/85 text-[#F8F6F1] text-[11px] font-semibold px-3 py-1.5 backdrop-blur">${drag ? "Drop to replace" : "Click · drop · ⌘V to " + (src ? "replace" : "add photo")}</span>
+          ${src && html`<button type="button" onClick=${(e) => { e.stopPropagation(); onReset(slot.id); }} className="rounded-full bg-white/90 text-[#0E2240] text-[11px] font-bold px-3 py-1.5 hover:bg-white">Reset</button>`}
+        </div>
+        ${!src && html`<span className="absolute top-3 left-3 rounded-full bg-white/85 text-[#0E2240] text-[10px] font-bold uppercase tracking-widest px-2.5 py-1">Illustration</span>`}
+        <input ref=${input} type="file" accept="image/*" className="hidden" id=${"photo-" + slot.id} onChange=${(e) => { const f = e.target.files[0]; if (f) onFile(slot.id, f); e.target.value = ""; }} />
+      </div>
+      <div className="p-5">
+        <h3 className="font-lux text-2xl text-[#0E2240]">${slot.title}</h3>
+        <p className="text-sm text-[#0E2240]/60 mt-1">${slot.caption}</p>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 mt-4">
+          ${slot.specs.map(([k, v]) => html`<div key=${k} className="border-t border-[#0E2240]/10 pt-2"><dt className="text-[10px] uppercase tracking-[.16em] text-[#0E2240]/45 font-bold">${k}</dt><dd className="text-sm font-semibold text-[#0E2240] tabnum">${v}</dd></div>`)}
+        </dl>
+      </div>
+    </article>`;
+}
+
+function VipModal({ open, onClose, isMember, onJoin }) {
+  const [seats, setSeats] = useState(BREAK_EVEN_SEATS);
+  useEsc(open, onClose);
+  if (!open) return null;
+  const save = seats * (DAY_PASS - MEMBER_PRICE), net = save - MEMBERSHIP_FEE;
+  const pct = clamp((seats / 40) * 100, 0, 100), bePct = (BREAK_EVEN_SEATS / 40) * 100;
+  const perks = [
+    ["0% surcharge all season", `A fixed ${eur(MEMBER_PRICE)} per seat for you and your guests, instead of ${eur(DAY_PASS)}.`],
+    ["Priority booking window", "Book every departure 7 days before the general public. Sunset Fridays sell out first."],
+    ["Concierge & villa tender", "Private zodiac pickup from your villa or beach club in Cala Jondal and Es Cubells."],
+    ["Welcome bottle on every trip", "Champagne or rosé waiting at your seat each time you sail."]
+  ];
+  return html`
+    <div className="fixed inset-0 z-50 bg-[#0E2240]/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6" onClick=${onClose}>
+      <div role="dialog" aria-modal="true" aria-label="VIP Membership" onClick=${(e) => e.stopPropagation()}
+        className="rise w-full sm:max-w-3xl max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-[#0E2240] text-[#F8F6F1] shadow-2xl ring-1 ring-[#C8A45D]/50">
+        <div className="relative p-6 sm:p-9">
+          <button type="button" onClick=${onClose} aria-label="Close" className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-xl leading-none">×</button>
+          <p className="text-[11px] font-bold uppercase tracking-[.3em] text-[#C8A45D]">Vesorax Public Yacht Club</p>
+          <h2 className="font-lux text-4xl sm:text-5xl mt-2">VIP Membership</h2>
+          <p className="mt-2 text-[#F8F6F1]/70"><span className="font-lux text-3xl text-[#C8A45D] tabnum">${eur(MEMBERSHIP_FEE)}</span> <span className="text-sm">per season · May to October</span></p>
+
+          <ul className="grid sm:grid-cols-2 gap-3 mt-7">
+            ${perks.map(([t, d], i) => html`<li key=${i} className="rounded-2xl bg-white/[.06] ring-1 ring-white/10 p-4">
+              <div className="flex items-start gap-3"><svg width="22" height="22" viewBox="0 0 22 22" className="shrink-0 mt-0.5" aria-hidden="true"><circle cx="11" cy="11" r="10" fill="none" stroke="#C8A45D" strokeWidth="1.5"/><path d="M6.5 11.5l3 3 6-7" stroke="#C8A45D" strokeWidth="1.8" fill="none" strokeLinecap="round"/></svg>
+              <div><p className="font-bold">${t}</p><p className="text-sm text-[#F8F6F1]/65 mt-0.5">${d}</p></div></div></li>`)}
+          </ul>
+
+          <section className="mt-8 rounded-2xl bg-[#F8F6F1] text-[#0E2240] p-5 sm:p-6" aria-labelledby="roi-h">
+            <h3 id="roi-h" className="font-lux text-2xl">Your break-even calculator</h3>
+            <label htmlFor="roi-seats" className="block text-sm font-semibold mt-3">How many seats will you book this summer? <span className="tabnum font-extrabold text-lg ml-1">${seats}</span></label>
+            <input id="roi-seats" type="range" min="1" max="40" value=${seats} onInput=${(e) => setSeats(+e.target.value)} className="w-full mt-2" />
+            <div className="relative h-3 rounded-full bg-[#0E2240]/10 mt-3 overflow-hidden">
+              <div className=${"absolute inset-y-0 left-0 rounded-full " + (net >= 0 ? "bg-[#2E9E6B]" : "bg-[#C8A45D]")} style=${{ width: pct + "%" }}></div>
+              <div className="absolute inset-y-0 w-0.5 bg-[#0E2240]" style=${{ left: bePct + "%" }}></div>
+            </div>
+            <p className="text-[11px] text-[#0E2240]/55 mt-1 tabnum" style=${{ paddingLeft: `calc(${bePct}% - 40px)` }}>Break-even: ${BREAK_EVEN_SEATS} seats</p>
+            <div className="grid grid-cols-3 gap-3 mt-4 text-center">
+              <div className="rounded-xl bg-white p-3"><p className="text-[10px] uppercase tracking-widest font-bold text-[#0E2240]/50">Day pass</p><p className="font-extrabold tabnum">${eur(seats * DAY_PASS)}</p></div>
+              <div className="rounded-xl bg-white p-3"><p className="text-[10px] uppercase tracking-widest font-bold text-[#0E2240]/50">Member</p><p className="font-extrabold tabnum">${eur(seats * MEMBER_PRICE + MEMBERSHIP_FEE)}</p></div>
+              <div className=${"rounded-xl p-3 " + (net >= 0 ? "bg-[#2E9E6B] text-white" : "bg-[#EADBB8]")}><p className="text-[10px] uppercase tracking-widest font-bold opacity-70">${net > 0 ? "You save" : net === 0 ? "Fee paid back" : "To break even"}</p><p className="font-extrabold tabnum">${net > 0 ? eur(net) : net === 0 ? "Break-even" : (BREAK_EVEN_SEATS - seats) + " more seat" + (BREAK_EVEN_SEATS - seats === 1 ? "" : "s")}</p></div>
+            </div>
+            <p className="text-sm mt-3 tabnum"><b>${seats} seats × ${eur(DAY_PASS - MEMBER_PRICE)} saved = ${eur(save)}</b> <span className="text-[#0E2240]/60">vs the ${eur(MEMBERSHIP_FEE)} season fee.</span></p>
+            <div className="hidden">
+            </div>
+            <p className="text-sm mt-4 text-[#0E2240]/75">Example: 4 trips with 3 friends = 16 seats → you save ${eur(16 * (DAY_PASS - MEMBER_PRICE))}, which covers the ${eur(MEMBERSHIP_FEE)} fee with ${eur(16 * (DAY_PASS - MEMBER_PRICE) - MEMBERSHIP_FEE)} to spare.</p>
+          </section>
+
+          <div className="flex flex-col sm:flex-row gap-3 mt-7">
+            ${isMember ? html`<p className="flex-1 text-center rounded-xl bg-[#2E9E6B] py-3.5 font-bold">You're a VIP member · ${eur(MEMBER_PRICE)} per seat is active</p>` :
+              html`<button type="button" onClick=${onJoin} className="flex-1 rounded-xl bg-[#C8A45D] text-[#0E2240] font-extrabold py-3.5 hover:bg-[#EADBB8] transition">Join for ${eur(MEMBERSHIP_FEE)} / season</button>`}
+            <button type="button" onClick=${onClose} className="rounded-xl ring-1 ring-white/25 px-6 py-3.5 font-semibold hover:bg-white/10">Keep browsing</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function ClientView({ s, a, say }) {
+  const dep = s.departures.find((d) => d.id === s.depId);
+  const [selected, setSelected] = useState([]);
+  const [focus, setFocus] = useState(null);
+  const [vip, setVip] = useState(false);
+  const [profile, setProfile] = useState(null);
+  const [activePhoto, setActivePhoto] = useState("exterior");
+  const { photos, save, reset, where } = useBoatPhotos(say);
+  const matchRef = useRef(null);
+
+  useEffect(() => { setSelected([]); setFocus(null); }, [s.depId]);
+  useEffect(() => {
+    const onPaste = (e) => {
+      const items = e.clipboardData ? [...e.clipboardData.items] : [];
+      const img = items.find((i) => i.type.startsWith("image/"));
+      if (!img) return;
+      const t = e.target; if (t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT")) return;
+      e.preventDefault();
+      save(activePhoto, img.getAsFile());
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [activePhoto, save]);
+
+  const left = CAPACITY - dep.occupied.length;
+  const unit = s.isMember ? MEMBER_PRICE : s.seatPrice;
+  const onSeat = (i) => { setFocus(i); setSelected((x) => (x.includes(i) ? x.filter((y) => y !== i) : [...x, i])); };
+  const ranking = profile ? [...s.departures].sort((x, y) => y.affinity[profile] - x.affinity[profile]) : [];
+  const best = ranking[0];
+  const prof = PROFILES_B2C.find((p) => p.id === profile);
+
+  return html`
+    <main className="pb-20">
+      <section className="max-w-7xl mx-auto px-4 pt-10 pb-6 grid gap-6 lg:grid-cols-[1fr_auto] items-end">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[.3em] text-[#C8A45D]">2020 Fjord 38 Xpress · Marina Port Ibiza · 8-hour day trips</p>
+          <h1 className="font-lux text-[40px] leading-[1.02] sm:text-6xl lg:text-7xl text-[#0E2240] mt-3 [text-wrap:balance]">Vesorax Public Yacht Club - Ibiza</h1>
+          <p className="mt-4 max-w-xl text-[#0E2240]/70 text-[17px]">Book a single seat on WOTAN, not the whole boat. Sail to Es Vedrà and Formentera with up to 10 guests who share your vibe.</p>
+        </div>
+        <button type="button" onClick=${() => matchRef.current && matchRef.current.scrollIntoView({ behavior: "smooth", block: "start" })}
+          className="rounded-2xl bg-[#0E2240] text-[#F8F6F1] px-6 py-4 text-left shadow-xl hover:bg-[#16325C] transition ring-1 ring-[#C8A45D]/40">
+          <span className="block text-[10px] font-bold uppercase tracking-[.25em] text-[#C8A45D]">AI Vibe Matchmaker</span>
+          <span className="block font-bold mt-0.5">Find your ideal boat based on your vibe →</span>
+        </button>
+      </section>
+
+      <div className="max-w-7xl mx-auto px-4">
+        <div className="rounded-2xl bg-[#0E2240] text-[#F8F6F1] px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1 mb-6" role="status">
+          <span className="relative flex h-2.5 w-2.5 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#D04A4A] opacity-70"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#D04A4A]"></span></span>
+          <p className="text-sm sm:text-base font-semibold"><span className="text-[#C8A45D]">${left === 0 ? "Sold out for this trip" : `Only ${left} seat${left === 1 ? "" : "s"} left for this trip`}</span> · <span className="tabnum">${s.viewers}</span> people viewing right now</p>
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-6 -mx-4 px-4" role="tablist" aria-label="Departures this week">
+          ${s.departures.map((d) => {
+            const l = CAPACITY - d.occupied.length, on = d.id === s.depId;
+            return html`<button key=${d.id} type="button" role="tab" aria-selected=${on} onClick=${() => a.setDep(d.id)}
+              className=${"shrink-0 rounded-2xl border px-4 py-3 text-left transition min-w-[176px] " + (on ? "bg-white border-[#0E2240] shadow-md" : "bg-white/60 border-[#0E2240]/10 hover:border-[#C8A45D]")}>
+              <span className="block text-[11px] font-bold uppercase tracking-widest text-[#0E2240]/50">${fmtDate(d.date)}</span>
+              <span className="block font-bold text-[#0E2240] text-sm mt-0.5">${d.name}</span>
+              <span className=${"block text-xs font-bold mt-1 " + (l <= 3 ? "text-[#D04A4A]" : "text-[#2E9E6B]")}>${l === 0 ? "Sold out" : l + (l === 1 ? " seat left" : " seats left")}</span>
+            </button>`;
+          })}
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+          <section className="rounded-[28px] bg-white border border-[#0E2240]/10 p-5 sm:p-6">
+            <div className="flex flex-wrap justify-between gap-2 items-baseline">
+              <h2 className="font-lux text-3xl text-[#0E2240]">${dep.name}</h2>
+              <span className="text-xs font-bold text-[#0E2240]/50 tabnum">${dep.time}</span>
+            </div>
+            <p className="text-sm text-[#0E2240]/60 mb-3">${dep.route}</p>
+            <div className="flex flex-wrap gap-4 mb-3 text-xs font-semibold text-[#0E2240]/70">
+              <span className="flex items-center gap-1.5"><i className="w-3 h-3 rounded-full bg-[#2E9E6B]"></i>Available</span>
+              <span className="flex items-center gap-1.5"><i className="w-3 h-3 rounded-full bg-[#D04A4A]"></i>Occupied</span>
+              <span className="flex items-center gap-1.5"><i className="w-3 h-3 rounded-full bg-[#0E2240] ring-2 ring-[#C8A45D]"></i>Your seats</span>
+            </div>
+            <${BoatMap} dep=${dep} selected=${selected} onSeat=${onSeat} />
+          </section>
+
+          <div className="flex flex-col gap-5 min-w-0">
+            <section className="rounded-[28px] bg-white border border-[#0E2240]/10 p-5 sm:p-6">
+              ${focus == null ? html`
+                <p className="text-[11px] font-bold uppercase tracking-[.25em] text-[#C8A45D]">Choose your seat</p>
+                <p className="font-lux text-2xl text-[#0E2240] mt-1">Tap a green seat on the yacht</p>
+                <p className="text-sm text-[#0E2240]/60 mt-1">Bow Sunbed for sun and spray, Captain's Lounge for shade and the teak table, Stern Sunpad for swim stops.</p>` : html`
+                <div className="rise">
+                  <p className="text-[11px] font-bold uppercase tracking-[.25em] text-[#C8A45D]">Seat ${focus + 1} · ${zoneOf(focus).name}</p>
+                  <p className="font-lux text-2xl text-[#0E2240] mt-1">${selected.includes(focus) ? "Added to your booking" : "Removed from your booking"}</p>
+                </div>`}
+              <div className="grid sm:grid-cols-2 gap-3 mt-5">
+                <div className=${"rounded-2xl p-4 border " + (!s.isMember ? "border-[#0E2240]/25" : "border-[#0E2240]/10 opacity-60")}>
+                  <p className="text-xs font-bold text-[#0E2240]/60">Day Pass · Non-Member</p>
+                  <p className="font-lux text-4xl text-[#0E2240] tabnum mt-1">${eur(s.seatPrice)}<span className="text-base font-sans text-[#0E2240]/50"> / seat</span></p>
+                  <p className="text-xs text-[#0E2240]/55 mt-1">Includes +40% non-member surcharge</p>
+                </div>
+                <div className="relative rounded-2xl p-4 bg-[#0E2240] text-[#F8F6F1] ring-2 ring-[#C8A45D]">
+                  <span className="absolute -top-2.5 right-3 rounded-full bg-[#C8A45D] text-[#0E2240] text-[10px] font-extrabold px-2.5 py-1 tabnum">YOU SAVE ${eur(s.seatPrice - MEMBER_PRICE)} / SEAT</span>
+                  <p className="text-xs font-bold text-[#F8F6F1]/70">VIP Member Rate</p>
+                  <p className="font-lux text-4xl tabnum mt-1">${eur(MEMBER_PRICE)}<span className="text-base font-sans text-[#F8F6F1]/50"> / seat</span></p>
+                  <p className="text-xs text-[#F8F6F1]/60 mt-1">0% surcharge, for you and your guests</p>
+                </div>
+              </div>
+              <button type="button" onClick=${() => setVip(true)} className="mt-4 w-full rounded-2xl bg-gradient-to-r from-[#C8A45D] to-[#E2C98F] text-[#0E2240] font-extrabold py-4 px-4 hover:brightness-105 transition shadow-[0_12px_30px_-12px_rgba(200,164,93,.9)]">
+                See what the VIP Membership includes (${eur(MEMBERSHIP_FEE).replace("€", "")}€ / Season)
+              </button>
+            </section>
+
+            <section className="rounded-[28px] bg-white border border-[#0E2240]/10 p-5 sm:p-6">
+              <h3 className="font-bold text-[#0E2240]">Your booking</h3>
+              ${selected.length === 0 ? html`<p className="text-sm text-[#0E2240]/60 mt-1">No seats selected yet.</p>` : html`
+                <ul className="mt-2 text-sm text-[#0E2240]/80 flex flex-wrap gap-2">${selected.map((i) => html`<li key=${i} className="rounded-full bg-[#F8F6F1] border border-[#0E2240]/10 px-3 py-1">Seat ${i + 1} · ${zoneOf(i).name}</li>`)}</ul>
+                <div className="flex items-end justify-between gap-3 flex-wrap mt-4">
+                  <div>
+                    <p className="text-xs text-[#0E2240]/60 tabnum">${selected.length} × ${eur(unit)} ${s.isMember ? "(member rate)" : "(day pass)"}</p>
+                    <p className="font-lux text-4xl text-[#0E2240] tabnum">${eur(selected.length * unit)}</p>
+                    ${!s.isMember && html`<p className="text-xs text-[#2E9E6B] font-bold tabnum">As a member: ${eur(selected.length * MEMBER_PRICE)}</p>`}
+                  </div>
+                  <button type="button" onClick=${() => { a.book(dep.id, selected, unit); setSelected([]); setFocus(null); }} className="rounded-xl bg-[#0E2240] hover:bg-[#2E9E6B] text-white font-bold px-6 py-3 transition">Reserve ${selected.length} seat${selected.length > 1 ? "s" : ""}</button>
+                </div>`}
+            </section>
+          </div>
+        </div>
+
+        <section ref=${matchRef} className="mt-14 scroll-mt-28" aria-labelledby="mm-h">
+          <p className="text-[11px] font-bold uppercase tracking-[.3em] text-[#C8A45D]">AI Vibe Matchmaker</p>
+          <h2 id="mm-h" className="font-lux text-4xl text-[#0E2240] mt-2">Who do you want to sail with?</h2>
+          <p className="text-[#0E2240]/65 mt-1 max-w-2xl">WOTAN compares your vibe with the profiles of guests who already hold seats on each departure this week.</p>
+          <div className="flex flex-wrap gap-2 mt-5">
+            ${PROFILES_B2C.map((p) => html`<button key=${p.id} type="button" onClick=${() => setProfile(p.id)} aria-pressed=${profile === p.id}
+              className=${"rounded-full px-5 py-2.5 font-bold text-sm border transition " + (profile === p.id ? "bg-[#0E2240] text-[#F8F6F1] border-[#0E2240]" : "bg-white text-[#0E2240] border-[#0E2240]/15 hover:border-[#C8A45D]")}>${p.label}</button>`)}
+          </div>
+          ${profile ? html`
+            <div className="grid lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] gap-5 mt-6 rise" key=${profile}>
+              <div className="rounded-[28px] bg-[#0E2240] text-[#F8F6F1] p-6">
+                <p className="text-[11px] font-bold uppercase tracking-[.25em] text-[#C8A45D]">Best match · ${fmtDate(best.date)}</p>
+                <p className="font-lux text-6xl text-[#C8A45D] tabnum mt-2">${best.affinity[profile]}%</p>
+                <p className="text-sm text-[#F8F6F1]/70">affinity</p>
+                <h3 className="font-lux text-3xl mt-3">${best.name}</h3>
+                <p className="text-sm text-[#F8F6F1]/70 mt-1">${best.route} · ${best.time}</p>
+                <p className="mt-4 text-sm">${best.occupied.filter((o) => o.p === profile).length} of the ${best.occupied.length} guests on board are ${prof.noun}. ${CAPACITY - best.occupied.length} seat${CAPACITY - best.occupied.length === 1 ? "" : "s"} left.</p>
+                <button type="button" onClick=${() => { a.setDep(best.id); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="mt-5 rounded-xl bg-[#C8A45D] text-[#0E2240] font-extrabold px-5 py-3 hover:bg-[#EADBB8]">Choose my seat on this trip</button>
+              </div>
+              <ul className="rounded-[28px] bg-white border border-[#0E2240]/10 p-5 flex flex-col gap-3">
+                ${ranking.map((d) => html`<li key=${d.id}>
+                  <button type="button" onClick=${() => { a.setDep(d.id); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="w-full text-left">
+                    <div className="flex justify-between text-sm"><span className="font-bold text-[#0E2240]">${fmtDate(d.date)} · ${d.short}</span><span className="tabnum font-extrabold text-[#0E2240]">${d.affinity[profile]}%</span></div>
+                    <div className="h-2 rounded-full mt-1.5 overflow-hidden bg-[#F1EEE6]"><div className=${"h-full rounded-full " + (d.id === best.id ? "bg-[#C8A45D]" : "bg-[#0E2240]/35")} style=${{ width: d.affinity[profile] + "%" }}></div></div>
+                  </button></li>`)}
+              </ul>
+            </div>` : html`<p className="mt-5 text-sm text-[#0E2240]/55">Pick a vibe above to see this week's affinity for each departure.</p>`}
+        </section>
+
+        <section className="mt-16" aria-labelledby="specs-h">
+          <div className="flex flex-wrap justify-between items-end gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[.3em] text-[#C8A45D]">The yacht</p>
+              <h2 id="specs-h" className="font-lux text-4xl text-[#0E2240] mt-2">WOTAN · Fjord 38 Xpress</h2>
+            </div>
+            <p className="text-xs text-[#0E2240]/55 max-w-sm">Hover a card and press ⌘V to paste a screenshot, or drop or click to upload. Photos are saved in ${where}.</p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-5 mt-6">
+            ${PHOTO_SLOTS.map((sl) => html`<${PhotoCard} key=${sl.id} slot=${sl} src=${photos[sl.id]} active=${activePhoto === sl.id} setActive=${setActivePhoto} onFile=${save} onReset=${reset} />`)}
+          </div>
+          <p className="text-[11px] text-[#0E2240]/45 mt-3">*Top speed depends on the engine package. Confirm with the owner before publishing.</p>
+        </section>
+      </div>
+      <${VipModal} open=${vip} onClose=${() => setVip(false)} isMember=${s.isMember} onJoin=${() => { a.join(); }} />
+    </main>`;
+}
+
+/* ======================================================================
+   BUSINESS MODE
+   ====================================================================== */
+const card = "rounded-xl bg-[#111318] border border-[#1F222B]";
+const kicker = "text-[11px] font-mono uppercase tracking-[.14em] text-[#8A90A0]";
+
+function Spark({ data, color = "#8B93FF" }) {
+  const w = 240, h = 52, min = Math.min(...data) * 0.97, max = Math.max(...data) * 1.01;
+  const pts = data.map((v, i) => [i * (w / (data.length - 1)), h - ((v - min) / (max - min)) * (h - 6) - 3]);
+  const line = pts.map((p) => p.join(",")).join(" "), last = pts[pts.length - 1];
+  return html`<svg viewBox=${`0 0 ${w} ${h}`} className="w-full h-12" aria-hidden="true">
+    ${[0.33, 0.66].map((f) => html`<line key=${f} x1="0" x2=${w} y1=${h * f} y2=${h * f} stroke="#1F222B" />`)}
+    <polygon points=${`0,${h} ${line} ${w},${h}`} fill=${color} fillOpacity="0.12" />
+    <polyline points=${line} fill="none" stroke=${color} strokeWidth="2" strokeLinejoin="round" />
+    <circle cx=${last[0]} cy=${last[1]} r="3.5" fill=${color} stroke="#111318" strokeWidth="2" />
+  </svg>`;
+}
+
+function pricingAdvice(departures, seatPrice) {
+  const occ = departures.map((d) => ({ d, o: d.occupied.length / CAPACITY })).sort((x, y) => y.o - x.o);
+  const top = occ.slice(0, 3), hot = top.reduce((x, y) => x + y.o, 0) / top.length;
+  const avg = occ.reduce((x, y) => x + y.o, 0) / occ.length;
+  let pct = 0, why;
+  if (hot >= 0.75) { pct = 20; why = `high demand: top departures at ${Math.round(hot * 100)}% (${top.map((t) => t.d.short).join(", ")})`; }
+  else if (hot >= 0.6) { pct = 10; why = `steady demand at ${Math.round(hot * 100)}% on the busiest days`; }
+  else if (avg <= 0.4) { pct = -15; why = `low occupancy (${Math.round(avg * 100)}%): run a 48 h flash offer`; }
+  else why = "demand is balanced, hold the price";
+  return { pct, why, avg, target: Math.round((DAY_PASS * (1 + pct / 100)) / 5) * 5, applied: seatPrice !== DAY_PASS };
+}
+
+function BISidebar({ s, a }) {
+  const advice = pricingAdvice(s.departures, s.seatPrice);
+  const mrr = (s.members * MEMBERSHIP_FEE) / SEASON_MONTHS;
+  const prev = s.mrrHistory[s.mrrHistory.length - 2];
+  return html`
+    <aside className="flex flex-col gap-3 lg:sticky lg:top-28" aria-label="Business Intelligence">
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold text-white">Business Intelligence</h2>
+        <span className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>LIVE</span>
+      </div>
+      <div className=${card + " p-4"}>
+        <p className=${kicker}>MRR · memberships</p>
+        <p className="text-3xl font-semibold text-white tabnum mt-1">${eur(mrr)}</p>
+        <p className="text-xs text-[#8A90A0]"><span className="text-emerald-400 font-medium">+${(Math.round((mrr / prev - 1) * 1000) / 10).toFixed(1)}%</span> · ${s.members} members × ${eur(MEMBERSHIP_FEE)} / ${SEASON_MONTHS} mo</p>
+        <${Spark} data=${s.mrrHistory} />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className=${card + " p-4"}><p className=${kicker}>Leads processed</p><p className="text-2xl font-semibold text-white tabnum mt-1">${s.leadsProcessed}</p><p className="text-xs text-[#8A90A0]">today ${s.leads.length}</p></div>
+        <div className=${card + " p-4"}><p className=${kicker}>Occupancy</p><p className="text-2xl font-semibold text-white tabnum mt-1">${Math.round(advice.avg * 100)}%</p><p className="text-xs text-[#8A90A0]">next 5 trips</p></div>
+        <div className=${card + " p-4 col-span-2"}><p className=${kicker}>Seat revenue today</p><p className="text-2xl font-semibold text-white tabnum mt-1">${eur(s.revenueToday)}</p></div>
+      </div>
+      <div className="rounded-xl p-4 border border-amber-400/30 bg-gradient-to-br from-amber-400/[.08] to-transparent">
+        <p className="text-[11px] font-mono uppercase tracking-[.14em] text-amber-300">AI dynamic pricing</p>
+        <p className="text-white font-medium mt-2 text-[15px] leading-snug">${advice.pct > 0 ? `Suggestion: Increase price by ${advice.pct}% due to ${advice.why}.` : advice.pct < 0 ? `Suggestion: Decrease price by ${-advice.pct}% due to ${advice.why}.` : `Suggestion: Keep price, ${advice.why}.`}</p>
+        <p className="text-xs text-[#8A90A0] mt-2">Day pass ${eur(DAY_PASS)} → <b className="text-white">${eur(advice.target)}</b>. Member rate stays ${eur(MEMBER_PRICE)} to widen the anchor.</p>
+        ${advice.pct !== 0 && html`<button type="button" onClick=${() => a.setPrice(advice.applied ? DAY_PASS : advice.target)}
+          className=${"mt-3 w-full rounded-lg text-sm font-semibold py-2 transition " + (advice.applied ? "border border-[#2A2E3A] text-[#C9CDD8] hover:border-white" : "bg-amber-400 text-[#0A0B0F] hover:bg-amber-300")}>${advice.applied ? `Applied (${eur(s.seatPrice)}) · Undo` : "Apply to Client Mode"}</button>`}
+      </div>
+      <div className=${card + " p-4"}>
+        <p className=${kicker + " mb-2"}>Activity</p>
+        <ul className="flex flex-col gap-2">${s.activity.map((x) => html`<li key=${x.id} className="rise text-xs text-[#C9CDD8] flex gap-2"><span className="font-mono text-[#5C6170] tabnum shrink-0">${x.t}</span><span>${x.m}</span></li>`)}</ul>
+      </div>
+    </aside>`;
+}
+
+/* ---- Lead analyzer (kept from v1, now with lead score + save to CDP) ---- */
+function LeadAnalyzer({ s, a }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState(null);
+  const [note, setNote] = useState("");
+  const [copied, setCopied] = useState("");
+  const [saved, setSaved] = useState(false);
+  const ctl = useRef(null);
+  const samples = [
+    "Hola! Somos 14 amigos y queremos ir de Ibiza a Mallorca el sábado, y si se puede dormir en el barco mejor 😍",
+    "Hi, I'm staying at a villa in Cala Jondal all of July with my wife and our 2 kids. I run a tech company and we'd like to go out several times.",
+    "Hello! Are there 2 seats left for the Formentera trip on Friday? How much per person?",
+    "We are 15 for a stag do, can we all fit on one boat? And can you do a discount?"
+  ];
+  const run = async () => {
+    const msg = text.trim(); if (!msg || busy) return;
+    setBusy(true); setNote(""); setCopied(""); setSaved(false);
+    const base = analyzeRules(msg);
+    let out = base;
+    try {
+      const sample = window.claude && window.claude.use ? await window.claude.use("sample") : null;
+      if (sample) {
+        ctl.current = new AbortController();
+        const r = await sample.json(AI_PROMPT + "\n\nCUSTOMER MESSAGE:\n\"\"\"\n" + msg + "\n\"\"\"", { signal: ctl.current.signal });
+        out = mergeAI(r, base);
+      } else {
+        await new Promise((r) => setTimeout(r, 500));
+        setNote("Running locally: WOTAN's built-in rule engine processed this lead.");
+      }
+    } catch (e) {
+      if (e && e.code !== "cancelled") setNote(e && e.code === "not_granted" ? "Claude wasn't allowed on this page, so the rule engine processed the lead." : "The AI didn't answer, so the rule engine processed the lead.");
+    }
+    setRes(out); setBusy(false); ctl.current = null;
+    a.addLead(msg, out);
+  };
+  const tier = res ? tierOf(res.score) : null;
+  return html`
+    <div className="flex flex-col gap-4">
+      <section className=${card + " p-5"}>
+        <label htmlFor="lead-in" className="text-sm font-medium text-[#C9CDD8]">Paste a customer message (WhatsApp, Instagram, email)</label>
+        <textarea id="lead-in" value=${text} onInput=${(e) => setText(e.target.value)} rows="5" placeholder="e.g. Hi! We're 13 friends and want to sail to Mallorca and sleep on board…"
+          className="mt-2 w-full rounded-lg bg-[#0A0B0F] border border-[#2A2E3A] text-[#E6E8EE] placeholder-[#5C6170] p-3 text-[15px] leading-relaxed resize-y"></textarea>
+        <div className="flex flex-wrap gap-2 mt-3">${samples.map((t, i) => html`<button key=${i} type="button" onClick=${() => setText(t)} className="text-xs rounded-md border border-[#2A2E3A] text-[#8A90A0] hover:text-white hover:border-[#8B93FF] px-2.5 py-1">Sample ${i + 1}</button>`)}</div>
+        <div className="flex flex-wrap items-center gap-3 mt-4">
+          <button type="button" onClick=${run} disabled=${busy || !text.trim()} className="rounded-lg bg-[#8B93FF] text-[#0A0B0F] font-semibold px-4 py-2 hover:bg-[#A6ACFF] disabled:opacity-40 transition">${busy ? "Processing…" : "Process with AI"}</button>
+          ${busy && html`<button type="button" onClick=${() => ctl.current && ctl.current.abort()} className="text-sm text-[#8A90A0] hover:text-white">Stop</button>`}
+          ${note && html`<span className="text-xs text-[#5C6170]">${note}</span>`}
+        </div>
+        <div className="flex flex-wrap gap-2 mt-4 text-[11px] font-mono text-[#8A90A0]">
+          <span className="rounded border border-[#1F222B] px-2 py-1">RULE · Ibiza & Formentera only</span>
+          <span className="rounded border border-[#1F222B] px-2 py-1">RULE · 11 pax max → tandem if 12+</span>
+          <span className="rounded border border-[#1F222B] px-2 py-1">RULE · 0 overnights</span>
+        </div>
+      </section>
+      ${busy && html`<div className=${card + " p-8 text-center"}><span className="animate-pulse font-mono text-sm text-[#8B93FF]">WOTAN is reading the message…</span></div>`}
+      ${res && !busy && html`
+        <div className="grid gap-4 md:grid-cols-2 rise">
+          <section className=${card + " p-5"}>
+            <p className=${kicker}>Profile classification</p>
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              <span className=${"rounded-md px-2.5 py-1 font-semibold ring-1 " + LEAD_PROFILES[res.profile].cls}>${LEAD_PROFILES[res.profile].label}</span>
+              <span className=${"rounded-md px-2 py-1 text-xs font-mono ring-1 " + TIERS[tier].cls}>${TIERS[tier].icon} Score ${res.score}</span>
+            </div>
+            <p className="text-sm text-[#C9CDD8] mt-3">${res.summary}</p>
+            <div className="mt-4 flex items-end gap-3">
+              <span className=${"text-4xl font-semibold tabnum " + (res.pax > CAPACITY ? "text-rose-400" : "text-white")}>${res.pax ?? "?"}</span>
+              <span className="text-xs text-[#8A90A0] pb-1.5">passengers · ${res.paxDetail}</span>
+            </div>
+            <button type="button" disabled=${saved} onClick=${() => { a.addClient(text.trim(), res); setSaved(true); }} className="mt-4 rounded-lg border border-[#2A2E3A] text-sm text-[#C9CDD8] hover:border-[#8B93FF] hover:text-white px-3 py-1.5 disabled:opacity-50">${saved ? "Saved to CDP" : "Save to CDP"}</button>
+          </section>
+          <section className=${card + " p-5"}>
+            <p className=${kicker}>Operational alerts</p>
+            <ul className="mt-3 flex flex-col gap-2">
+              ${["capacity", "overnight", "geo"].map((k) => { const al = res.alerts[k]; return html`
+                <li key=${k} className=${"rounded-lg px-3 py-2.5 border " + (al.ok ? "border-emerald-500/20 bg-emerald-500/[.04]" : "border-rose-500/40 bg-rose-500/10")}>
+                  <div className="flex items-center justify-between gap-2"><span className="font-medium text-sm text-white">${al.label}</span>
+                  <span className=${"text-[11px] font-mono font-semibold " + (al.ok ? "text-emerald-400" : "text-rose-300")}>${al.ok ? "PASS" : "ALERT"}</span></div>
+                  <p className="text-xs text-[#8A90A0] mt-0.5">${al.detail}</p></li>`; })}
+            </ul>
+          </section>
+          <section className=${card + " p-5 md:col-span-2"}>
+            <div className="flex flex-wrap justify-between gap-2 items-center">
+              <p className=${kicker}>Sales suggestion</p>
+              <span className="text-[11px] font-mono text-[#5C6170]">${res.source === "ai" ? "AI (Claude) + rule check" : "Rule engine"}${res.whatsapp ? " · " : ""}${res.whatsapp && html`<span className="text-emerald-400">Hand off to WhatsApp</span>`}</span>
+            </div>
+            <ul className="mt-3 grid gap-1.5 text-sm text-[#E6E8EE] list-disc pl-5">${res.suggestion.map((x, i) => html`<li key=${i}>${x}</li>`)}</ul>
+            <p className="text-xs font-medium text-[#8A90A0] mt-5 mb-2">Suggested reply</p>
+            <div className="rounded-lg bg-[#0A0B0F] border border-[#1F222B] p-4 text-sm text-[#E6E8EE] whitespace-pre-wrap">${res.reply}</div>
+            <button type="button" onClick=${async () => setCopied((await copyText(res.reply)) ? "Copied" : "Copy blocked: select the text above")} className="mt-3 rounded-lg border border-[#2A2E3A] text-[#C9CDD8] hover:border-[#8B93FF] text-sm px-3 py-1.5">${copied || "Copy reply"}</button>
+          </section>
+        </div>`}
+      <section className=${card + " overflow-hidden"}>
+        <div className="flex justify-between items-baseline px-5 pt-4"><h3 className="font-semibold text-white">Processed leads</h3><span className="text-xs text-[#5C6170] font-mono">today</span></div>
+        <div className="overflow-x-auto mt-3">
+          <table className="w-full text-sm min-w-[560px]">
+            <thead><tr className="text-left text-xs text-[#5C6170] border-b border-[#1F222B]"><th className="font-medium px-5 py-2">Time</th><th className="font-medium py-2">Lead</th><th className="font-medium py-2">Channel</th><th className="font-medium py-2 text-right">Pax</th><th className="font-medium px-5 py-2">Profile</th></tr></thead>
+            <tbody>${s.leads.map((l) => html`<tr key=${l.id} className="border-b border-[#1F222B]/70 last:border-0 hover:bg-white/[.02]">
+              <td className="px-5 py-2.5 font-mono text-xs text-[#5C6170] tabnum">${l.time}</td>
+              <td className="py-2.5 pr-3"><div className="text-[#E6E8EE] font-medium">${l.who}</div><div className="text-[#5C6170] text-xs truncate max-w-[280px]">${l.text}</div></td>
+              <td className="py-2.5 text-[#8A90A0]">${l.channel}</td>
+              <td className=${"py-2.5 text-right tabnum font-mono " + (l.pax > CAPACITY ? "text-rose-400" : "text-[#C9CDD8]")}>${l.pax ?? "?"}</td>
+              <td className="px-5 py-2.5"><span className=${"rounded px-1.5 py-0.5 text-xs font-medium ring-1 " + LEAD_PROFILES[l.profile].cls}>${LEAD_PROFILES[l.profile].short}</span>${l.alerts > 0 && html`<span className="ml-2 text-[11px] text-rose-300">${l.alerts} alert${l.alerts > 1 ? "s" : ""}</span>`}</td>
+            </tr>`)}</tbody>
+          </table>
+        </div>
+      </section>
+    </div>`;
+}
+
+/* ---- CDP ---- */
+function ScoreRing({ score }) {
+  const t = tierOf(score), col = t === "whale" ? "#FBBF24" : t === "mid" ? "#7DD3FC" : "#FDA4AF";
+  const r = 16, c = 2 * Math.PI * r;
+  return html`<svg width="44" height="44" viewBox="0 0 44 44" aria-label=${"Lead score " + score}>
+    <circle cx="22" cy="22" r=${r} fill="none" stroke="#1F222B" strokeWidth="4"/>
+    <circle cx="22" cy="22" r=${r} fill="none" stroke=${col} strokeWidth="4" strokeDasharray=${`${(score / 100) * c} ${c}`} strokeLinecap="round" transform="rotate(-90 22 22)"/>
+    <text x="22" y="26" textAnchor="middle" fontSize="12" fontWeight="600" fill="#E6E8EE" fontFamily="Geist Mono, ui-monospace, monospace">${score}</text></svg>`;
+}
+
+function CDP({ clients, openId, setOpenId }) {
+  const [tab, setTab] = useState("all");
+  const counts = { all: clients.length, whale: 0, mid: 0, low: 0 };
+  clients.forEach((c) => counts[tierOf(c.score)]++);
+  const list = clients.filter((c) => tab === "all" || tierOf(c.score) === tab).sort((x, y) => y.score - x.score);
+  const tabs = [["all", "All clients", ""], ["whale", TIERS.whale.label, TIERS.whale.icon], ["mid", TIERS.mid.label, TIERS.mid.icon], ["low", TIERS.low.label, TIERS.low.icon]];
+  const totalLtv = clients.reduce((x, c) => x + ltvOf(c), 0);
+  return html`
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        ${[["Clients", clients.length], ["Total LTV", eur(totalLtv)], ["VIP members", clients.filter((c) => c.member).length], ["Avg score", Math.round(clients.reduce((x, c) => x + c.score, 0) / clients.length)]].map(([k, v]) => html`
+          <div key=${k} className=${card + " p-4"}><p className=${kicker}>${k}</p><p className="text-2xl font-semibold text-white tabnum mt-1">${v}</p></div>`)}
+      </div>
+      <div className="flex gap-1 p-1 rounded-lg bg-[#111318] border border-[#1F222B] overflow-x-auto" role="tablist" aria-label="Client tiers">
+        ${tabs.map(([id, label, icon]) => html`<button key=${id} type="button" role="tab" aria-selected=${tab === id} onClick=${() => setTab(id)}
+          className=${"shrink-0 rounded-md px-3 py-2 text-sm font-medium transition flex items-center gap-2 " + (tab === id ? "bg-[#1C1F28] text-white shadow-[inset_0_0_0_1px_#2A2E3A]" : "text-[#8A90A0] hover:text-white")}>
+          ${icon && html`<span aria-hidden="true">${icon}</span>`}<span>${label}</span>${id !== "all" && html`<span className="text-[11px] font-mono text-[#5C6170]">${TIERS[id].range}</span>`}
+          <span className="rounded bg-[#0A0B0F] px-1.5 text-[11px] font-mono text-[#8A90A0] tabnum">${counts[id]}</span></button>`)}
+      </div>
+      <ul className=${card + " divide-y divide-[#1F222B] overflow-hidden"}>
+        ${list.map((c) => { const t = tierOf(c.score), last = c.history[0]; return html`
+          <li key=${c.id}>
+            <button type="button" onClick=${() => setOpenId(c.id)} className=${"w-full text-left px-4 py-3.5 grid grid-cols-[auto_minmax(0,1fr)_auto] sm:grid-cols-[auto_minmax(0,1.4fr)_minmax(0,1fr)_auto_auto] gap-x-4 gap-y-1 items-center transition hover:bg-white/[.03] " + (openId === c.id ? "bg-[#8B93FF]/[.06]" : "")}>
+              <${ScoreRing} score=${c.score} />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap"><span className="font-medium text-white">${c.name}</span>${c.member && html`<span className="text-[10px] font-mono rounded bg-amber-400/15 text-amber-300 px-1.5 py-0.5">VIP</span>`}</div>
+                <div className="text-xs text-[#8A90A0] truncate">${c.profession} · ${c.origin}</div>
+              </div>
+              <div className="hidden sm:block min-w-0 text-xs text-[#8A90A0]"><div className="truncate">${last ? fmtISO(last.date) + " · " + last.desc : "—"}</div><div className="truncate text-[#5C6170]">${c.partner ? "via " + c.partner.name : c.channel}</div></div>
+              <span className=${"hidden sm:inline rounded px-2 py-0.5 text-[11px] font-medium ring-1 whitespace-nowrap " + TIERS[t].cls}>${TIERS[t].icon} ${t === "whale" ? "Whale" : t === "mid" ? "Mid-tier" : "Low"}</span>
+              <div className="text-right"><div className="text-sm font-semibold text-white tabnum">${eur(ltvOf(c))}</div><div className="text-[11px] text-[#5C6170]">LTV</div></div>
+            </button>
+          </li>`; })}
+        ${list.length === 0 && html`<li className="p-6 text-sm text-[#8A90A0]">No clients in this tier yet.</li>`}
+      </ul>
+    </div>`;
+}
+
+function ClientDrawer({ c, onClose, say }) {
+  const [msg, setMsg] = useState("");
+  const [copied, setCopied] = useState("");
+  useEsc(!!c, onClose);
+  useEffect(() => { setMsg(""); setCopied(""); }, [c && c.id]);
+  if (!c) return null;
+  const ltv = ltvOf(c), ratio = c.cac ? ltv / c.cac : 0, good = ratio >= 3, t = tierOf(c.score);
+  const commission = c.partner ? Math.round(c.history.reduce((x, h) => x + h.amount, 0) * c.partner.commission / 100) : 0;
+  const actionLabel = { upgrade: "Generate Upgrade WhatsApp", invest: "Generate Investment Club WhatsApp", referral: "Generate Referral WhatsApp", tandem: "Generate Tandem Offer WhatsApp", nurture: "Generate Polite Close Message" }[c.nba.kind];
+  return html`
+    <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label=${"Client profile: " + c.name}>
+      <div className="absolute inset-0 bg-black/60" onClick=${onClose}></div>
+      <div className="slidein relative w-full max-w-[560px] h-full overflow-y-auto bg-[#0D0F14] border-l border-[#1F222B] shadow-2xl">
+        <div className="sticky top-0 z-10 bg-[#0D0F14]/95 backdrop-blur border-b border-[#1F222B] px-5 py-4 flex items-center gap-3">
+          <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#8B93FF] to-[#4B52B8] grid place-items-center font-semibold text-white">${c.initials}</div>
+          <div className="min-w-0 flex-1"><p className="font-semibold text-white truncate">${c.name}</p><p className="text-xs text-[#8A90A0] truncate">${c.origin}${c.age ? " · " + c.age : ""}</p></div>
+          <span className=${"rounded px-2 py-0.5 text-[11px] font-medium ring-1 " + TIERS[t].cls}>${TIERS[t].icon} ${c.score}</span>
+          <button type="button" onClick=${onClose} aria-label="Close" className="w-8 h-8 rounded-md hover:bg-white/10 text-[#8A90A0] text-xl leading-none">×</button>
+        </div>
+        <div className="p-5 flex flex-col gap-4">
+          <section className="rounded-xl border border-[#8B93FF]/40 bg-gradient-to-br from-[#8B93FF]/[.12] to-transparent p-4">
+            <div className="flex items-center justify-between gap-2"><p className="text-[11px] font-mono uppercase tracking-[.14em] text-[#A6ACFF]">AI Next Best Action · WOTAN</p><span className="text-xs font-mono text-[#A6ACFF] tabnum">${c.nba.prob}%</span></div>
+            <p className="font-semibold text-white mt-2">${c.nba.title}</p>
+            <p className="text-sm text-[#C9CDD8] mt-1">${c.nba.text}</p>
+            <div className="h-1.5 rounded-full bg-[#1F222B] mt-3 overflow-hidden"><div className="h-full bg-[#8B93FF]" style=${{ width: c.nba.prob + "%" }}></div></div>
+            <button type="button" onClick=${() => setMsg(whatsappFor(c))} className="mt-4 rounded-lg bg-[#8B93FF] text-[#0A0B0F] font-semibold text-sm px-3.5 py-2 hover:bg-[#A6ACFF]">${actionLabel}</button>
+            ${msg && html`<div className="rise mt-3">
+              <div className="rounded-lg bg-[#0A0B0F] border border-emerald-500/30 p-3 text-sm text-[#E6E8EE] whitespace-pre-wrap">${msg}</div>
+              <div className="flex flex-wrap gap-2 mt-2">
+                <button type="button" onClick=${async () => setCopied((await copyText(msg)) ? "Copied" : "Copy blocked: select the text")} className="rounded-md border border-[#2A2E3A] text-xs text-[#C9CDD8] hover:border-emerald-400 px-2.5 py-1.5">${copied || "Copy message"}</button>
+                <a href=${"https://wa.me/?text=" + encodeURIComponent(msg)} target="_blank" rel="noopener" className="rounded-md bg-emerald-500/15 text-emerald-300 text-xs font-medium px-2.5 py-1.5 hover:bg-emerald-500/25">Open in WhatsApp ↗</a>
+              </div></div>`}
+          </section>
+
+          <section className=${card + " p-4"}>
+            <p className=${kicker}>Profile & origin</p>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 mt-3 text-sm">
+              ${[["Profession", c.profession], ["Est. net worth", c.worth], ["Spending capacity", c.capacity], ["Stay", c.stay], ["Acquisition", c.channel], ["Preferred vibe", c.vibe]].map(([k, v]) => html`<div key=${k} className="min-w-0"><dt className="text-[11px] text-[#5C6170]">${k}</dt><dd className="text-[#E6E8EE]">${v}</dd></div>`)}
+            </dl>
+            <div className=${"mt-4 rounded-lg px-3 py-2.5 text-sm " + (c.partner ? "bg-amber-400/[.07] border border-amber-400/25 text-amber-200" : "bg-[#0A0B0F] border border-[#1F222B] text-[#8A90A0]")}>
+              ${c.partner ? html`<span>Referred by <b>${c.partner.name}</b> · ${c.partner.commission}% commission <span className="text-amber-300/70 tabnum">(${eur(commission)} this season)</span></span>` : "No B2B partner. Direct client."}
+            </div>
+          </section>
+
+          <section className=${card + " p-4"}>
+            <p className=${kicker}>Booking & extras history</p>
+            <ol className="mt-3 flex flex-col">
+              ${c.history.map((h, i) => html`<li key=${i} className="grid grid-cols-[88px_minmax(0,1fr)_auto] gap-3 py-2.5 border-b border-[#1F222B] last:border-0 text-sm">
+                <span className="font-mono text-xs text-[#8A90A0] pt-0.5">${fmtISO(h.date)}</span>
+                <span className="text-[#E6E8EE]">${i === 0 ? html`<span className="text-[10px] font-mono text-[#A6ACFF] mr-1.5">LAST</span>` : ""}${h.desc}</span>
+                <span className=${"tabnum font-medium " + (h.amount ? "text-white" : "text-[#5C6170]")}>${h.amount ? eur(h.amount) : "—"}</span></li>`)}
+            </ol>
+            ${c.surchargeMonth > 0 && html`<p className="text-xs text-amber-300 mt-2">Non-member surcharges paid this month: <b className="tabnum">${eur(c.surchargeMonth)}</b></p>`}
+          </section>
+
+          <section className=${card + " p-4"}>
+            <p className=${kicker}>Client unit economics</p>
+            <div className="grid grid-cols-3 gap-3 mt-3">
+              <div><p className="text-[11px] text-[#5C6170]">LTV (accumulated)</p><p className="text-xl font-semibold text-white tabnum">${eur(ltv)}</p></div>
+              <div><p className="text-[11px] text-[#5C6170]">Attributed CAC</p><p className="text-xl font-semibold text-white tabnum">${eur(c.cac)}</p></div>
+              <div className=${"rounded-lg px-2 py-1 " + (good ? "bg-emerald-500/10 ring-1 ring-emerald-500/40" : "bg-rose-500/10 ring-1 ring-rose-500/30")}>
+                <p className="text-[11px] text-[#8A90A0]">LTV : CAC</p><p className=${"text-xl font-semibold tabnum " + (good ? "text-emerald-400" : "text-rose-300")}>${ratio.toFixed(1)} : 1</p></div>
+            </div>
+            <p className="text-xs text-[#5C6170] mt-2">${good ? "Healthy: at or above the 3 : 1 benchmark." : "Below the 3 : 1 benchmark. Don't spend more acquisition budget here."}</p>
+          </section>
+        </div>
+      </div>
+    </div>`;
+}
+
+/* ---- Investment Club ---- */
+function InvestmentClub() {
+  const [boats, setBoats] = useState(1);
+  const [occ, setOcc] = useState(82);
+  const [members, setMembers] = useState(40);
+  const r = simulate(boats, occ / 100, members);
+  const series = Array.from({ length: 10 }, (_, i) => simulate(i + 1, occ / 100, members));
+  const maxV = Math.max(...series.map((x) => x.ebitda), 1), minV = Math.min(0, ...series.map((x) => x.trad.ebitda));
+  const W = 560, H = 200, pad = 28, bw = (W - pad) / 10;
+  const y = (v) => H - 20 - ((v - minV) / (maxV - minV)) * (H - 40);
+  const kpis = [
+    ["MRR · memberships", eur(r.mrr), `${r.members} members × ${eur(MEMBERSHIP_FEE)} / ${SEASON_MONTHS} mo`],
+    ["Avg. occupancy", occ + "%", `vs ${Math.round(MODEL.tradOcc * 100)}% traditional charter`],
+    ["Season revenue", eurK(r.rev), `${eurK(r.monthly)} / month run-rate`],
+    ["EBITDA", eurK(r.ebitda), `${Math.round(r.margin * 100)}% margin · trad. ${eurK(r.trad.ebitda)}`]
+  ];
+  return html`
+    <div className="flex flex-col gap-4">
+      <section className=${card + " p-5"}>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div><p className=${kicker}>Investment Club · fleet simulator</p><h3 className="text-xl font-semibold text-white mt-1">Scale from 1 to 10 Fjord 38 Xpress</h3></div>
+          <p className="text-4xl font-semibold text-white tabnum">${boats} <span className="text-base text-[#8A90A0] font-normal">boat${boats > 1 ? "s" : ""}</span></p>
+        </div>
+        <input id="boats" type="range" min="1" max="10" value=${boats} onInput=${(e) => setBoats(+e.target.value)} className="w-full mt-4" aria-label="Number of boats" />
+        <div className="flex justify-between text-[11px] font-mono text-[#5C6170] mt-1">${Array.from({ length: 10 }, (_, i) => html`<span key=${i}>${i + 1}</span>`)}</div>
+        <div className="grid sm:grid-cols-2 gap-4 mt-5">
+          <label className="text-sm text-[#C9CDD8]" htmlFor="occ">Yacht Club seat occupancy <b className="text-white tabnum">${occ}%</b>
+            <input id="occ" type="range" min="50" max="95" value=${occ} onInput=${(e) => setOcc(+e.target.value)} className="w-full mt-1" /></label>
+          <label className="text-sm text-[#C9CDD8]" htmlFor="mem">Members per boat <b className="text-white tabnum">${members}</b>
+            <input id="mem" type="range" min="0" max="100" step="5" value=${members} onInput=${(e) => setMembers(+e.target.value)} className="w-full mt-1" /></label>
+        </div>
+      </section>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        ${kpis.map(([k, v, sub], i) => html`<div key=${k} className=${card + " p-4"}><p className=${kicker}>${k}</p><p className=${"text-2xl font-semibold tabnum mt-1 " + (i === 3 ? (r.ebitda >= 0 ? "text-emerald-400" : "text-rose-400") : "text-white")}>${v}</p><p className="text-[11px] text-[#5C6170] mt-0.5">${sub}</p></div>`)}
+      </div>
+      <section className=${card + " p-5"}>
+        <div className="flex flex-wrap justify-between items-baseline gap-2"><p className=${kicker}>EBITDA per season by fleet size</p>
+          <div className="flex gap-4 text-[11px] text-[#8A90A0]"><span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-sm bg-[#8B93FF]"></i>Public Yacht Club</span><span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-sm bg-[#5C6170]"></i>Traditional charter</span></div></div>
+        <div className="overflow-x-auto"><svg viewBox=${`0 0 ${W} ${H}`} className="w-full min-w-[480px] mt-3" role="img" aria-label="EBITDA by fleet size">
+          <line x1=${pad} x2=${W} y1=${y(0)} y2=${y(0)} stroke="#2A2E3A" />
+          <text x="0" y=${y(0) + 4} fontSize="9" fill="#5C6170" fontFamily="Geist Mono, ui-monospace, monospace">€0</text>
+          <text x="0" y=${y(maxV) + 8} fontSize="9" fill="#5C6170" fontFamily="Geist Mono, ui-monospace, monospace">${eurK(maxV)}</text>
+          ${series.map((p, i) => { const x = pad + i * bw + 4, on = i + 1 === boats; const yc = y(Math.max(p.ebitda, 0)), yt0 = y(0), yt = y(p.trad.ebitda); return html`<g key=${i} onClick=${() => setBoats(i + 1)} style=${{ cursor: "pointer" }}>
+            <rect x=${x} y=${Math.min(yc, yt0)} width=${bw / 2 - 4} height=${Math.max(1, Math.abs(yt0 - yc))} rx="2" fill="#8B93FF" fillOpacity=${on ? 1 : 0.35} />
+            <rect x=${x + bw / 2 - 2} y=${Math.min(yt, yt0)} width=${bw / 2 - 4} height=${Math.max(1, Math.abs(yt0 - yt))} rx="2" fill="#5C6170" fillOpacity=${on ? 1 : 0.5} />
+            <text x=${x + bw / 2 - 4} y=${H - 4} textAnchor="middle" fontSize="10" fill=${on ? "#fff" : "#5C6170"} fontFamily="Geist Mono, ui-monospace, monospace">${i + 1}</text>
+            ${on && html`<text x=${x + bw / 4} y=${yc - 6} textAnchor="middle" fontSize="10" fill="#fff" fontFamily="Geist Mono, ui-monospace, monospace">${eurK(p.ebitda)}</text>`}
+          </g>`; })}
+        </svg></div>
+      </section>
+      <details className=${card + " p-4 text-xs text-[#8A90A0]"}>
+        <summary className="cursor-pointer text-[#C9CDD8] font-medium">Model assumptions</summary>
+        <ul className="mt-3 grid sm:grid-cols-2 gap-x-6 gap-y-1.5 list-disc pl-4">
+          <li><b className="text-[#C9CDD8]">From the growth audit PDF:</b> ${SELLABLE_DAYS} sellable days (May–Oct), private day rate €1,500–2,000 (model: ${eur(MODEL.tradDayRate)}), marketplace commission 23–26% (model: 25% on 60% of bookings).</li>
+          <li>Traditional occupancy ${Math.round(MODEL.tradOcc * 100)}% of days; Yacht Club occupancy is seat-based.</li>
+          <li>Seat mix: ${Math.round(MODEL.memberSeatShare * 100)}% member seats at ${eur(MEMBER_PRICE)}, the rest at ${eur(DAY_PASS)}; extras ${eur(MODEL.extrasPerSeat)} per seat.</li>
+          <li>Costs per boat: skipper, fuel and cleaning ${eur(MODEL.opCostPerDay)}/day; mooring, insurance and maintenance ${eurK(MODEL.fixedPerBoat)}/season; F&B ${eur(MODEL.fbPerSeat)}/seat; acquisition 10% of seat revenue.</li>
+          <li>Club HQ (team + WOTAN software): ${eurK(MODEL.hqBase)} + ${eurK(MODEL.hqPerBoat)} per boat. EBITDA excludes boat depreciation and financing.</li>
+          <li>All figures except the PDF inputs are simulation assumptions, not WOTAN actuals.</li>
+        </ul>
+      </details>
+    </div>`;
+}
+
+function BusinessView({ s, a, say }) {
+  const [tab, setTab] = useState("leads");
+  const [openId, setOpenId] = useState(null);
+  const open = s.clients.find((c) => c.id === openId) || null;
+  const tabs = [["leads", "Lead Analyzer"], ["cdp", "CDP · Clients"], ["invest", "Investment Club"]];
+  return html`
+    <main className="max-w-7xl mx-auto px-4 py-7 grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px] items-start">
+      <div className="flex flex-col gap-5 min-w-0">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-mono uppercase tracking-[.18em] text-[#8B93FF]">WOTAN · CRM & Customer Data Platform</p>
+            <h1 className="text-3xl font-semibold text-white tracking-tight mt-1">${tab === "leads" ? "Inbox triage" : tab === "cdp" ? "Client database" : "Investor view"}</h1>
+          </div>
+          <div className="flex gap-1 p-1 rounded-lg bg-[#111318] border border-[#1F222B]" role="tablist" aria-label="Business sections">
+            ${tabs.map(([id, label]) => html`<button key=${id} type="button" role="tab" aria-selected=${tab === id} onClick=${() => setTab(id)}
+              className=${"rounded-md px-3 py-1.5 text-sm font-medium transition " + (tab === id ? "bg-[#1C1F28] text-white shadow-[inset_0_0_0_1px_#2A2E3A]" : "text-[#8A90A0] hover:text-white")}>${label}${id === "cdp" ? html` <span className="text-[11px] font-mono text-[#5C6170]">${s.clients.length}</span>` : ""}</button>`)}
+          </div>
+        </div>
+        ${tab === "leads" && html`<${LeadAnalyzer} s=${s} a=${a} />`}
+        ${tab === "cdp" && html`<${CDP} clients=${s.clients} openId=${openId} setOpenId=${setOpenId} />`}
+        ${tab === "invest" && html`<${InvestmentClub} />`}
+      </div>
+      <${BISidebar} s=${s} a=${a} />
+      <${ClientDrawer} c=${open} onClose=${() => setOpenId(null)} say=${say} />
+    </main>`;
+}
+
+/* ======================================================================
+   APP
+   ====================================================================== */
+const MOCK_LEADS = [
+  { id: 5, channel: "Instagram", who: "Noah B.", time: "11:02", text: "One seat on the Founders Run, solo traveller!", profile: "seat", pax: 1, alerts: 0 },
+  { id: 4, channel: "Web form", who: "Pierre L.", time: "10:31", text: "Can we sleep on board and leave early to Mallorca?", profile: "lost", pax: 4, alerts: 2 },
+  { id: 3, channel: "WhatsApp", who: "Emma W.", time: "10:05", text: "Two seats for the sunset trip on Friday please, price per person?", profile: "seat", pax: 2, alerts: 0 },
+  { id: 2, channel: "WhatsApp", who: "Kevin D.", time: "09:40", text: "We are 15 for a stag do, all on one boat? Discount?", profile: "seat", pax: 15, alerts: 1 },
+  { id: 1, channel: "Villa partner", who: "Alexander B.", time: "09:12", text: "Staying at our villa in Cala Jondal all August, 4 seats again with the Seabob.", profile: "vip", pax: 4, alerts: 0 }
+];
+const MRR_HISTORY = [4200, 4600, 5000, 5400, 5800, 6200, 6600, 7000, 7400, 7800, 8200, 8400];
+const ACTIVITY_POOL = [
+  "New lead from Instagram · VIP signals detected",
+  "Seat booked on Illetes Day Club",
+  "Jondal Villa Collective referred 2 guests",
+  "Lead from WhatsApp · 13 pax → tandem proposed",
+  "Seat booked on Es Vedrà Sunset Session",
+  "Lead asked for Mallorca → rerouted to Es Vedrà",
+  "Member renewed for 2027 · priority window"
+];
+
+function App() {
+  const [mode, setMode] = useState("biz");
+  const [s, setS] = useState({
+    departures: INITIAL_DEPARTURES, depId: "d1", viewers: 5, seatPrice: DAY_PASS,
+    members: 42, isMember: false, mrrHistory: MRR_HISTORY, leadsProcessed: 128, revenueToday: 2240,
+    leads: MOCK_LEADS, clients: CLIENTS,
+    activity: [{ id: 1, t: "11:02", m: "Lead from Instagram · Seat profile" }, { id: 2, t: "10:48", m: "Seat booked on Illetes Day Club" }, { id: 3, t: "10:31", m: "Lead asked for Mallorca → rerouted" }]
+  });
+  const [toast, setToast] = useState("");
+  const tRef = useRef(null);
+  const up = (f) => setS((x) => ({ ...x, ...f(x) }));
+  const say = useCallback((m) => { setToast(m); clearTimeout(tRef.current); tRef.current = setTimeout(() => setToast(""), 2800); }, []);
+  const log = (x, m) => [{ id: Date.now() + Math.random(), t: nowHM(), m }, ...x.activity].slice(0, 6);
+
+  useEffect(() => {
+    document.body.classList.toggle("biz", mode === "biz");
+    document.documentElement.style.colorScheme = mode === "biz" ? "dark" : "light";
+    window.scrollTo({ top: 0 });
+  }, [mode]);
+
+  useEffect(() => {
+    const v = setInterval(() => up((x) => ({ viewers: clamp(x.viewers + (Math.random() < 0.5 ? -1 : 1), 3, 9) })), 5000);
+    const f = setInterval(() => up((x) => ({ leadsProcessed: x.leadsProcessed + (Math.random() < 0.6 ? 1 : 0), activity: log(x, ACTIVITY_POOL[Math.floor(Math.random() * ACTIVITY_POOL.length)]) })), 9000);
+    return () => { clearInterval(v); clearInterval(f); };
+  }, []);
+
+  const pushMrr = (x, members) => ({ members, mrrHistory: [...x.mrrHistory.slice(1), (members * MEMBERSHIP_FEE) / SEASON_MONTHS] });
+  const actions = {
+    setDep: (id) => up(() => ({ depId: id, viewers: 5 })),
+    setPrice: (p) => { up((x) => ({ seatPrice: p, activity: log(x, `Day pass set to ${eur(p)} by dynamic pricing`) })); say(`Client Mode day pass is now ${eur(p)}`); },
+    join: () => { up((x) => (x.isMember ? {} : { isMember: true, ...pushMrr(x, x.members + 1), activity: log(x, `New VIP member · +${eur(MEMBERSHIP_FEE)} season fee`) })); say(`Welcome to the club. Every seat is now ${eur(MEMBER_PRICE)}.`); },
+    book: (depId, seats, unit) => {
+      up((x) => ({
+        departures: x.departures.map((d) => (d.id === depId ? { ...d, occupied: [...d.occupied, ...seats.map((seat) => ({ seat, p: "couples" }))] } : d)),
+        revenueToday: x.revenueToday + seats.length * unit,
+        activity: log(x, `${seats.length} seat${seats.length > 1 ? "s" : ""} booked · ${eur(seats.length * unit)}`)
+      }));
+      say(`Booked. ${seats.length} seat${seats.length > 1 ? "s" : ""} reserved. See it live in Business Mode.`);
+    },
+    addLead: (text, r) => up((x) => ({
+      leadsProcessed: x.leadsProcessed + 1,
+      leads: [{ id: Date.now(), channel: "Pasted", who: "New lead", time: nowHM(), text, profile: r.profile, pax: r.pax, alerts: Object.values(r.alerts).filter((q) => !q.ok).length }, ...x.leads].slice(0, 10),
+      activity: log(x, `Lead processed · ${LEAD_PROFILES[r.profile].short} · score ${r.score}${r.whatsapp ? " · WhatsApp hand-off" : ""}`)
+    })),
+    addClient: (text, r) => {
+      const id = "n" + Date.now();
+      const kind = r.alerts.capacity.ok ? (r.profile === "lost" ? "nurture" : r.profile === "vip" ? "upgrade" : "referral") : "tandem";
+      const client = { id, name: "New lead " + nowHM(), initials: "NL", origin: "Unknown", age: null, profession: "To qualify", worth: "Unknown", capacity: "Unknown", stay: "Unknown", partner: null, channel: "Pasted message", score: r.score, member: false, vibe: "Unknown",
+        history: [{ date: new Date().toISOString().slice(0, 10), desc: "Inquiry · " + text.slice(0, 80) + (text.length > 80 ? "…" : ""), amount: 0 }], prior: 0, cac: 25, surchargeMonth: 0,
+        nba: { prob: clamp(r.score - 10, 5, 95), kind, title: r.suggestion[0] ? "Next step" : "Qualify", text: r.suggestion.join(" ") } };
+      up((x) => ({ clients: [client, ...x.clients], activity: log(x, `Lead saved to CDP · score ${r.score}`) }));
+      say("Saved to the CDP. Open the CDP tab to see the card.");
+    }
+  };
+
+  return html`
+    <div className="min-h-screen">
+      <${TopToggle} mode=${mode} setMode=${setMode} />
+      ${mode === "biz" ? html`<${BusinessView} s=${s} a=${actions} say=${say} />` : html`<${ClientView} s=${s} a=${actions} say=${say} />`}
+      <${Toast} msg=${toast} biz=${mode === "biz"} />
+    </div>`;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(html`<${App} />`);
+})();
+</script>
+
+</body>
+</html>
